@@ -106,7 +106,8 @@ def run_daily_image():
     images = fetch_images()
     for image in images:
         if image["url"] not in seen_links:
-            caption = f"🌠 Image #{fact_index['index'] + 1}\nWhat a stunning view! This shows [brief context, e.g., Starship assembly]—key for Mars missions.\nSource: {image['source']} [link if available]\nWhat do you think? Discuss on X: https://x.com/RedHorizonHub #RedHorizonHub"
+            context = image['description'][:150] + "..." if image['description'] else "A captivating space image highlighting Mars or Starship tech."
+            caption = f"🌠 Image #{fact_index['index'] + 1}\n{image['title']}\nWhat a stunning view! {context}\nSource: {image['source_name']} ({image['source_link']})\nWhat do you think? Discuss on X: https://x.com/RedHorizonHub #RedHorizonHub"
             if send_telegram_image(image["url"], caption):
                 seen_links[image["url"]] = True
                 fact_index["index"] += 1
