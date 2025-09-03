@@ -1,0 +1,44 @@
+name: RedHorizon - LAUNCH SCAN (30m)
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes (UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # allow committing state updates
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    concurrency: redhorizon-launch-scan
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Scan launches
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          python - << 'PY'
+          from src.tasks import run_scan_launches
+          print(run_scan_launches())
+          PY
+
+      - name: Commit launch cache
+        run: |
+          git config user.email "bot@users.noreply.github.com"
+          git config user.name "redhorizon-bot"
+          git add data/launch_cache.json
+          git diff --staged --quiet || git commit -m "Update launch cache [scan]"
+          git push
