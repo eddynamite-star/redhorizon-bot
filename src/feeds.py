@@ -56,6 +56,7 @@ def fetch_rss_news(is_terraforming=False):
                 link = entry.link
                 summary = getattr(entry, 'summary', '')
                 score = score_article(title, summary)
+                source = feed.feed.title if hasattr(feed, 'feed') and hasattr(feed.feed, 'title') else feed_url
                 if score > 5 or (is_terraforming and any(k.lower() in (title.lower() + summary.lower()) for k in ["terraforming", "habitability", "Mars colonization"])):
                     articles.append({
                         "title": title,
@@ -65,7 +66,7 @@ def fetch_rss_news(is_terraforming=False):
                         "is_breaking": is_breaking,
                         "is_super_breaking": is_super_breaking,
                         "score": score,
-                        "source": feed.feed.title if hasattr(feed, 'feed') and hasattr(feed.feed, 'title') else feed_url
+                        "source": source
                     })
         except Exception as e:
             print(f"Error fetching {feed_url}: {e}")
@@ -77,15 +78,27 @@ def fetch_images():
     for feed_url in IMAGE_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
+            source_name = feed.feed.title if hasattr(feed, 'feed') and hasattr(feed.feed, 'title') else feed_url
             for entry in feed.entries:
                 published = getattr(entry, 'published_parsed', None)
-                if published and (now - datetime(*published[:6])) > timedelta(hours=48):  # Filter <48 hours
-                    continue
-                media = getattr(entry, 'media_content', []) or [entry.get('link')]
+                if published:
+                    published_dt = datetime(*published[:6])
+                    if (now - published_dt) > timedelta(hours=48):
+                        continue
+                title = getattr(entry, 'title', 'Untitled Image')
+                description = getattr(entry, 'summary', '') or getattr(entry, 'description', 'No description available')
+                source_link = getattr(entry, 'link', feed_url)
+                media = getattr(entry, 'media_content', []) or [{'url': enc.url} for enc in getattr(entry, 'enclosures', [])]
                 for item in media:
-                    url = item.get('url') if isinstance(item, dict) else item
-                    if url and (url.endswith('.jpg') or url.endswith('.png')):
-                        images.append({"url": url, "source": feed.feed.title if hasattr(feed, 'feed') and hasattr(feed.feed, 'title') else feed_url})
+                    url = item.get('url')
+                    if url and (url.endswith('.jpg') or url.endswith('.png') or 'image' in item.get('type', '')):
+                        images.append({
+                            'url': url,
+                            'title': title,
+                            'description': description,
+                            'source_link': source_link,
+                            'source_name': source_name
+                        })
         except Exception as e:
             print(f"Error fetching {feed_url}: {e}")
     return images
