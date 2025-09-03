@@ -1,0 +1,36 @@
+name: RedHorizon - Images
+on:
+  schedule:
+    - cron: "0 12 * * *"
+    - cron: "0 16 * * *"
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency: redhorizon-images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run image task
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
+        run: |
+          python -c "from src.tasks import run_daily_image; print(run_daily_image())"
+      - name: Commit state
+        run: |
+          git config user.email "bot@users.noreply.github.com"
+          git config user.name "redhorizon-bot"
+          git add data/*.json
+          git diff --staged --quiet || git commit -m "Update state [images]"
+          git push
