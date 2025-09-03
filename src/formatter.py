@@ -25,8 +25,9 @@ DOMAIN_BADGES = {
     "ulalaunch.com": "ULA",
     "arianespace.com": "Arianespace",
     "rocketlabusa.com": "Rocket Lab",
+    "teslarati.com": "Teslarati",
     "youtube.com": "YouTube",
-    "teslarati.com": "Teslarati"
+    "nitter.net": "X",
 }
 
 def domain_of(url: str) -> str:
@@ -111,7 +112,7 @@ def fmt_starbase_fact(title: str, body: str, ref_url: str = "", tags=None) -> st
 
 def fmt_book_spotlight(title: str, author: str, blurb: str, url: str, tags=None) -> str:
     header = f"📚 <b>Book Spotlight</b>\n{html.escape(title)} — <i>{html.escape(author)}</i>"
-    lines = [header, html.escape(blurb.strip()), link("Find it", url), build_hashtags((tags or []) + ["SciFi", "Books"])]
+    lines = [header, html.escape(blurb.strip()), link("Learn more", url), build_hashtags((tags or []) + ["SciFi", "Books"])]
     return clamp("\n\n".join(lines), TG_MAX_TEXT)
 
 def fmt_welcome(x_url: str = "https://x.com/RedHorizonHub") -> str:
