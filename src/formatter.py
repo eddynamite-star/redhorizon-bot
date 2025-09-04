@@ -28,8 +28,9 @@ def kpi_line(items):
     items = [i for i in (items or []) if i]
     return " · ".join(items)
 
-# --- Breaking ---
-
+# -----------------------------
+# Breaking (tight, clean copy)
+# -----------------------------
 def fmt_breaking(title: str, url: str, summary: str = "", tags=None, source_hint: str = "") -> str:
     src = source_hint or badge_for(url)
     header = f"🚨 <b>BREAKING</b> — {html.escape(title)}"
@@ -42,12 +43,13 @@ def fmt_breaking(title: str, url: str, summary: str = "", tags=None, source_hint
     return clamp("\n\n".join(lines), TG_MAX_TEXT)
 
 def fmt_priority(title: str, url: str, reason: str = "Live/Now", tags=None) -> str:
-    head = f"🟢 <b>Live/Now</b> — {html.escape(title)}"
+    head = f"🟢 <b>{html.escape(reason)}</b> — {html.escape(title)}"
     body = f"{link('Watch/Follow', url)}\n{build_hashtags(tags)}"
     return clamp("\n\n".join([head, body]), TG_MAX_TEXT)
 
-# --- Digest ---
-
+# -----------------------------
+# Daily Digest (5 items)
+# -----------------------------
 def fmt_digest(date_label: str, items: list[dict], tags=None, footer_x: str = "") -> str:
     """
     items: [{ 'title','url','source','blurb','time_utc' }]
@@ -81,14 +83,15 @@ def fmt_digest(date_label: str, items: list[dict], tags=None, footer_x: str = ""
 
     return clamp("\n\n".join([header, body, "\n".join(footer)]), TG_MAX_TEXT)
 
-# --- Image (dynamic) ---
-
+# -----------------------------
+# Images (dynamic captions)
+# -----------------------------
 IMAGE_VARIANTS = [
     {"emoji":"📷", "label":"Red Horizon Daily Image", "keys":[]},
     {"emoji":"🚀", "label":"Launch Flashback",        "keys":["launch","liftoff","falcon","starship","booster","pad","cape","vandenberg"]},
     {"emoji":"🌅", "label":"Martian Horizon",         "keys":["mars","curiosity","perseverance","hirise","viking","insight","gale","jezero"]},
     {"emoji":"🌌", "label":"Cosmic View",             "keys":["jwst","webb","hubble","eso","galaxy","nebula","cluster","exoplanet"]},
-    {"emoji":"🛠️","label":"Starbase Progress",       "keys":["starbase","boca","mechazilla","olm","olp","raptor","stack","static fire"]},
+    {"emoji":"🛠️","label":"Starbase Progress",       "keys":["starbase","boca","mechazilla","olm","olp","raptor","stack","static fire","wdr"]},
 ]
 
 def choose_image_variant(text: str) -> dict:
@@ -98,24 +101,30 @@ def choose_image_variant(text: str) -> dict:
             return v
     return IMAGE_VARIANTS[0]
 
-def fmt_image_post(title: str, url: str, credit: str = "", tags=None) -> str:
+def fmt_image_post(title: str, url: str, credit: str = "", tags=None, explainer: str = "") -> str:
     variant = choose_image_variant(f"{title} {credit} {url}")
     header = f'{variant["emoji"]} <b>{variant["label"]}</b>'
     title_line = (html.escape(title or "Space image"))
     lines = [header, title_line]
     if credit:
         lines.append(f"<i>{html.escape(credit)}</i>")
+    if explainer:
+        lines.append(html.escape(clamp(explainer, 180)))
     base = ["Space","Mars","RedHorizon"]
     extras = tags or []
     lines.append(build_hashtags(base + [t for t in extras if t not in base]))
     return clamp("\n".join(lines), TG_MAX_CAPTION)
-    def fmt_welcome(x_url: str = "https://x.com/RedHorizonHub") -> str:
+
+# -----------------------------
+# Welcome (panel-informed)
+# -----------------------------
+def fmt_welcome(x_url: str = "https://x.com/RedHorizonHub") -> str:
     lines = [
         "👋 <b>Welcome to Red Horizon</b>",
-        "Your daily hub for Starship/SpaceX, Mars exploration, and standout space imagery.",
-        "What to expect:\n• 📰 Breaking every 15m\n• 🚀 Daily digests\n• 🏗 Starbase highlights\n• 📸 Images 3× daily",
+        "Your hub for SpaceX, Starship, and Mars exploration — plus the science, stories, and imagination that bring space closer.",
+        "Here’s what you’ll find:\n• 🚨 Timely <i>breaking news</i> from trusted sources\n• 📰 A <b>Daily Digest</b> of the 5 biggest stories\n• 📸 Stunning <b>space images</b> posted throughout the day\n• 🗳 Weekly polls, explainers, and challenges to spark curiosity\n• 💡 Community threads for questions, ideas, and creative visions",
+        "We’re building a community that’s:\n✨ Positive and inspiring\n🌍 Open and welcoming\n🚀 Anchored in the dream of reaching Mars",
         f'Follow on X: <a href="{html.escape(x_url)}">@RedHorizonHub</a>',
         build_hashtags(["Space","Mars","Starship","RedHorizon"]),
     ]
     return clamp("\n\n".join(lines), TG_MAX_TEXT)
-
