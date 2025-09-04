@@ -1,126 +1,111 @@
-# src/formatter.py — attractive HTML formatting for Telegram posts
+# formatter.py
+import html, re
 
-import html
-import re
-from urllib.parse import urlparse
-
-TG_MAX_TEXT = 4096
+TG_MAX_TEXT = 3900
 TG_MAX_CAPTION = 1024
 
-# Default hashtags
-BASE_TAGS = ["Mars", "SpaceX", "Starship", "RedHorizon"]
+def clamp(s: str, n: int) -> str:
+    s = s or ""
+    return s[:n-1] + "…" if len(s) > n else s
 
-# Map domains to labels
-DOMAIN_BADGES = {
-    "nasaspaceflight.com": "NSF",
-    "spaceflightnow.com": "SFN",
-    "spacenews.com": "SpaceNews",
-    "nasa.gov": "NASA",
-    "science.nasa.gov": "NASA Science",
-    "esa.int": "ESA",
-    "everydayastronaut.com": "Everyday Astronaut",
-    "universetoday.com": "Universe Today",
-    "phys.org": "Phys.org",
-    "blueorigin.com": "Blue Origin",
-    "ulalaunch.com": "ULA",
-    "arianespace.com": "Arianespace",
-    "rocketlabusa.com": "Rocket Lab",
-    "teslarati.com": "Teslarati",
-    "youtube.com": "YouTube",
-    "nitter.net": "X",
-}
+def link(text: str, url: str) -> str:
+    t = html.escape(text or "Open")
+    u = html.escape(url or "")
+    return f'<a href="{u}">{t}</a>'
 
-def domain_of(url: str) -> str:
-    try:
-        return urlparse(url).netloc.lower().replace("www.", "")
-    except Exception:
-        return ""
+def build_hashtags(tags):
+    tags = [t for t in (tags or []) if t]
+    return " ".join(f"#{t.replace(' ','')}" for t in tags)
+
+DOMAIN_RE = re.compile(r"https?://(www\.)?([^/]+)")
 
 def badge_for(url: str) -> str:
-    d = domain_of(url)
-    return DOMAIN_BADGES.get(d, d or "Source")
+    m = DOMAIN_RE.match(url or "")
+    host = (m.group(2) if m else "source").lower()
+    return host
 
-def clamp(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[: max(0, limit - 1)] + "…"
+def kpi_line(items):
+    items = [i for i in (items or []) if i]
+    return " · ".join(items)
 
-def build_hashtags(extra=None):
-    tags = BASE_TAGS[:]
-    if extra:
-        for t in extra:
-            t = re.sub(r"[^A-Za-z0-9_]", "", t)
-            if t and t not in tags:
-                tags.append(t)
-    return " ".join(f"#{t}" for t in tags)
-
-def link(title: str, url: str) -> str:
-    return f'<a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'
-
-def kpi_line(items: list[str]) -> str:
-    joined = " · ".join(items)
-    return f'<span class="tg-spoiler">{html.escape(joined)}</span>'
-
-# ---------- Templates ----------
+# --- Breaking ---
 
 def fmt_breaking(title: str, url: str, summary: str = "", tags=None, source_hint: str = "") -> str:
     src = source_hint or badge_for(url)
     header = f"🚨 <b>BREAKING</b> — {html.escape(title)}"
     lines = [header]
     if summary:
-        lines.append(html.escape(summary.strip()))
+        lines.append(summary)  # already cleaned upstream
     lines.append(link("Read more", url))
     lines.append(kpi_line([src]))
     lines.append(build_hashtags(tags))
     return clamp("\n\n".join(lines), TG_MAX_TEXT)
 
-def fmt_priority(title: str, url: str, reason: str = "", tags=None) -> str:
-    src = badge_for(url)
-    reason = f" — {reason}" if reason else ""
-    header = f"🟢 <b>Live/Now</b>{html.escape(reason)}"
-    lines = [header, html.escape(title), link("Open", url), kpi_line([src]), build_hashtags(tags)]
-    return clamp("\n\n".join(lines), TG_MAX_TEXT)
+def fmt_priority(title: str, url: str, reason: str = "Live/Now", tags=None) -> str:
+    head = f"🟢 <b>Live/Now</b> — {html.escape(title)}"
+    body = f"{link('Watch/Follow', url)}\n{build_hashtags(tags)}"
+    return clamp("\n\n".join([head, body]), TG_MAX_TEXT)
+
+# --- Digest ---
 
 def fmt_digest(date_label: str, items: list[dict], tags=None, footer_x: str = "") -> str:
+    """
+    items: [{ 'title','url','source','blurb','time_utc' }]
+    """
     header = f"🚀 <b>Red Horizon Daily Digest — {html.escape(date_label)}</b>"
-    bullets = []
+
+    blocks = []
     for it in items:
-        t = clamp(it.get("title", "").strip(), 120)
-        u = it.get("url", "")
-        s = it.get("source") or badge_for(u)
-        bullets.append(f"• {link(t, u)} — <i>{html.escape(s)}</i>")
-    body = "\n".join(bullets) if bullets else "<i>No fresh items.</i>"
+        title = clamp((it.get("title") or "").strip(), 120)
+        url   = it.get("url", "")
+        src   = it.get("source") or badge_for(url)
+        blurb = (it.get("blurb") or "").strip()
+        time_ = it.get("time_utc") or ""
+
+        line1 = f"• {link(title, url)} — <i>{html.escape(src)}</i>"
+        if time_:
+            line1 += f" · 🕒 {html.escape(time_)} UTC"
+
+        block = [line1]
+        if blurb:
+            block.append(f"  <i>Quick read:</i> {html.escape(clamp(blurb, 180))}")
+        block.append(f"  {link('➡️ Open', url)}")
+        blocks.append("\n".join(block))
+
+    body = "\n\n".join(blocks) if blocks else "<i>No fresh items.</i>"
+
     footer = []
     if footer_x:
         footer.append(f"Follow on X: {link('@RedHorizonHub', footer_x)}")
     footer.append(build_hashtags(tags))
+
     return clamp("\n\n".join([header, body, "\n".join(footer)]), TG_MAX_TEXT)
 
+# --- Image (dynamic) ---
+
+IMAGE_VARIANTS = [
+    {"emoji":"📷", "label":"Red Horizon Daily Image", "keys":[]},
+    {"emoji":"🚀", "label":"Launch Flashback",        "keys":["launch","liftoff","falcon","starship","booster","pad","cape","vandenberg"]},
+    {"emoji":"🌅", "label":"Martian Horizon",         "keys":["mars","curiosity","perseverance","hirise","viking","insight","gale","jezero"]},
+    {"emoji":"🌌", "label":"Cosmic View",             "keys":["jwst","webb","hubble","eso","galaxy","nebula","cluster","exoplanet"]},
+    {"emoji":"🛠️","label":"Starbase Progress",       "keys":["starbase","boca","mechazilla","olm","olp","raptor","stack","static fire"]},
+]
+
+def choose_image_variant(text: str) -> dict:
+    t = (text or "").lower()
+    for v in IMAGE_VARIANTS[1:]:
+        if any(k in t for k in v["keys"]):
+            return v
+    return IMAGE_VARIANTS[0]
+
 def fmt_image_post(title: str, url: str, credit: str = "", tags=None) -> str:
-    header = f"📸 <b>{html.escape(title)}</b>"
-    meta = kpi_line([credit] if credit else [])
-    caption = "\n\n".join([header, link("Source", url), meta, build_hashtags(tags)])
-    return clamp(caption, TG_MAX_CAPTION)
-
-def fmt_starbase_fact(title: str, body: str, ref_url: str = "", tags=None) -> str:
-    header = f"🏗 <b>Starbase Highlight</b>\n{html.escape(title)}"
-    lines = [header, html.escape(body.strip())]
-    if ref_url:
-        lines.append(link("Learn more", ref_url))
-    lines.append(build_hashtags(tags or ["Starbase"]))
-    return clamp("\n\n".join(lines), TG_MAX_TEXT)
-
-def fmt_book_spotlight(title: str, author: str, blurb: str, url: str, tags=None) -> str:
-    header = f"📚 <b>Book Spotlight</b>\n{html.escape(title)} — <i>{html.escape(author)}</i>"
-    lines = [header, html.escape(blurb.strip()), link("Learn more", url), build_hashtags((tags or []) + ["SciFi", "Books"])]
-    return clamp("\n\n".join(lines), TG_MAX_TEXT)
-
-def fmt_welcome(x_url: str = "https://x.com/RedHorizonHub") -> str:
-    lines = [
-        "👋 <b>Welcome to Red Horizon</b>",
-        "Your daily hub for Starship/SpaceX, Mars exploration, and standout space imagery.",
-        "What to expect:\n• 📰 Breaking every 15m\n• 🚀 Daily digests\n• 🏗 Starbase highlights\n• 📸 Images 3× daily\n• 📖 Book spotlights",
-        f"Follow on X: {link('@RedHorizonHub', x_url)}",
-        build_hashtags(["Space", "Exploration"]),
-    ]
-    return clamp("\n\n".join(lines), TG_MAX_TEXT)
+    variant = choose_image_variant(f"{title} {credit} {url}")
+    header = f'{variant["emoji"]} <b>{variant["label"]}</b>'
+    title_line = (html.escape(title or "Space image"))
+    lines = [header, title_line]
+    if credit:
+        lines.append(f"<i>{html.escape(credit)}</i>")
+    base = ["Space","Mars","RedHorizon"]
+    extras = tags or []
+    lines.append(build_hashtags(base + [t for t in extras if t not in base]))
+    return clamp("\n".join(lines), TG_MAX_CAPTION)
