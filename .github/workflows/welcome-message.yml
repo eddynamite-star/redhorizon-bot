@@ -1,22 +1,57 @@
-name: RH Welcome (Sun 10:00 UTC)
+name: RH Welcome (manual + weekly)
+
 on:
-  schedule: [{ cron: "0 10 * * 0" }]
   workflow_dispatch:
+  schedule:
+    - cron: "0 10 * * 0"   # Sun 10:00 UTC
 
 jobs:
-  run:
+  welcome:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: "pip" }
+        with:
+          python-version: "3.11"
+          cache: "pip"
       - run: pip install -r requirements.txt
-      - name: Welcome
+
+      # Smoke test: verify secrets are present
+      - name: Check secrets present
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN" || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
+          test -n "$TELEGRAM_CHANNEL_ID" || (echo "Missing TELEGRAM_CHANNEL_ID" && exit 1)
+          echo "Secrets present ✅"
+
+      # Run the welcome task with verbose Telegram errors
+      - name: Post Welcome
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: |
           python - << 'PY'
-          from src.tasks import run_welcome_message
-          print(run_welcome_message())
+          import os, requests, html
+          # Minimal: sendMessage directly to rule out any import issues
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat  = os.environ["TELEGRAM_CHANNEL_ID"]
+          text = (
+              "👋 <b>Welcome to Red Horizon</b>\n\n"
+              "Your daily hub for Starship/SpaceX, Mars exploration, and standout space imagery.\n"
+              "What to expect:\n• 📰 Breaking every 15m\n• 🚀 Daily digests\n• 🏗 Starbase highlights\n• 📸 Images 3× daily\n\n"
+              f'Follow on X: <a href="{html.escape("https://x.com/RedHorizonHub")}">@RedHorizonHub</a>\n'
+              "#Space #Mars #Starship #RedHorizon"
+          )
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          r = requests.post(url, json={
+              "chat_id": chat,
+              "text": text,
+              "parse_mode": "HTML",
+              "disable_web_page_preview": True
+          }, timeout=20)
+          print("HTTP", r.status_code)
+          print(r.text)
+          r.raise_for_status()
           PY
