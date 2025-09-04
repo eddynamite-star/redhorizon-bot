@@ -1,9 +1,8 @@
 # feeds.py
-import feedparser, requests, re, html
+import feedparser, re, html
 from datetime import datetime, timedelta, timezone
 
 # ---------- Helpers ----------
-
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
 DOMAIN_RE = re.compile(r"https?://(www\.)?([^/]+)")
@@ -30,55 +29,84 @@ def is_recent(dt: datetime, hours=48) -> bool:
     return (_now() - dt) <= timedelta(hours=hours)
 
 def is_english(text: str) -> bool:
-    # very light heuristic
     if not text: return True
     nonlatin = re.findall(r"[^\x00-\x7F]", text)
     return len(nonlatin) < max(4, len(text)//12)
 
-# ---------- Feeds ----------
-
-# News (expanded)
+# ---------- Source lists ----------
+# NEWS: Your 30 sources mapped into feeds (robust → direct; weak → best-available)
 NEWS_FEEDS = [
+    # Official orgs
     "https://www.nasa.gov/rss/dyn/breaking_news.rss",
     "https://science.nasa.gov/feed/",
     "https://mars.nasa.gov/rss/news/",
+    "https://www.esa.int/rssfeed/Our_Activities/Space_News",
+    "https://www.blueorigin.com/rss/",
+    # JAXA EN newsroom can be spotty—kept digest-only if parse works:
+    "https://global.jaxa.jp/rss/en/index.xml",
+    # Major outlets
+    "https://www.space.com/feeds/all",
     "https://spacenews.com/feed/",
-    "https://www.spaceflightnow.com/feed/",
+    "https://www.spacepolicyonline.com/feed/",
+    "https://www.universetoday.com/feed/",
+    "https://feeds.arstechnica.com/arstechnica/space",
+    "https://www.planetary.org/rss/feed",
+    # Mars / exploration orgs (digest only weight; some feeds may be sparse)
+    "https://www.marssociety.org/feed/",
+    "https://marsinstitute.net/feed/",
+    "https://exploremars.org/feed/",
+    "https://astrobiology.nasa.gov/rss/news/",
+    "https://www.seti.org/rss.xml",
+    # Think tanks / research (digest-low)
+    "https://sei.media.mit.edu/feed/",                  # MIT SEI (if present)
+    "https://www.caltech.edu/about/news/rss",          # Caltech news (broad)
+    "https://www.jhuapl.edu/Content/rss/press-releases.xml",
+    "https://www.rand.org/topics/space/rss.xml",
+    "https://aerospace.csis.org/feed/",
+    # Sci-comm / creators (digest; breaking via trusted sites instead)
     "https://everydayastronaut.com/feed/",
     "https://www.nasaspaceflight.com/feed/",
-    "https://www.teslarati.com/category/space/feed/",
-    "https://www.universetoday.com/feed/",
-    "https://phys.org/rss-feed/space-news/",
-    "https://www.esa.int/rssfeed/Our_Activities/Space_News",
-    # Added high-signal sources
-    "https://feeds.arstechnica.com/arstechnica/space",
-    "https://www.theverge.com/rss/space/index.xml",
-    "https://www.ieee-oss.blackbarlabs.com/spectrum/space/feed",  # fallback mirror; IEEE RSS is fickle
-    "https://payloadspace.com/feed/",
+    # Community (filtered)
+    "https://www.reddit.com/r/spacex.rss",
+    "https://www.reddit.com/r/space.rss",
+    # Schedule/launches (also used by launch scanner)
     "https://www.rocketlaunch.live/rss",
 ]
 
-# Images (expanded)
+# Nitter (X) feeds — digest-only; used as signals to boost trusted links for breaking
+# (Safe defaults; you may add/remove)
+NITTER_FEEDS = [
+    "https://nitter.net/SpaceX/rss",
+    "https://nitter.net/NASASpaceflight/rss",
+    "https://nitter.net/SpaceflightNow/rss",
+    "https://nitter.net/Erdayastronaut/rss",
+    "https://nitter.net/DJSnM/rss",
+    "https://nitter.net/SciGuySpace/rss",
+    "https://nitter.net/MarcusHouseGame/rss",
+    "https://nitter.net/RGVaerialphotos/rss",
+]
+
+# IMAGES (expanded)
 IMAGE_FEEDS = [
     "https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss",
     "https://mars.nasa.gov/rss/news/images/",
-    "https://www.flickr.com/services/feeds/photos_public.gne?id=28634332@N05&lang=en-us&format=rss_200", # SpaceX
+    "https://www.flickr.com/services/feeds/photos_public.gne?id=28634332@N05&lang=en-us&format=rss_200", # SpaceX Flickr
     "https://esahubble.org/rss/image_of_the_week/",
     "https://webb.nasa.gov/content/webbLaunch/rss.xml",
     "https://www.eso.org/public/rss/image_index.xml",
     "https://apod.nasa.gov/apod.rss",
     "https://www.uahirise.org/rss/",
-    "https://www.planetary.org/rss/feed"
+    "https://www.planetary.org/rss/feed",
 ]
 
-# Breaking / priority logic
+# ---------- Scoring ----------
 KEYWORDS = [
     "spacex","starship","starbase","boca chica","falcon 9","falcon9","falcon-9",
     "falcon heavy","super heavy","booster","mechazilla","chopsticks","olm","olp",
     "raptor","merlin","dragon","crew dragon","cargo dragon",
     "launch","liftoff","static fire","hotfire","wdr","wet dress","stack","destack",
     "rollout","rollback","countdown","premiere","live","pad","orbital",
-    "mars","terraform","habitat","isru","red planet"
+    "mars","terraform","habitat","isru","red planet","jezero","gale","perseverance","curiosity"
 ]
 NEGATIVE_HINTS = [
     "opinion","editorial","sponsored","newsletter","podcast","weekly","roundup","recap",
@@ -89,13 +117,11 @@ PRIORITY_WORDS = [
     "rollout","rollback","countdown","premiere","live"
 ]
 BREAKING_WHITELIST = {
-    "nasaspaceflight.com","spaceflightnow.com","spacenews.com",
     "nasa.gov","science.nasa.gov","esa.int",
-    "everydayastronaut.com","universetoday.com","rocketlaunch.live",
-    "arstechnica.com","theverge.com","payloadspace.com"
+    "nasaspaceflight.com","spaceflightnow.com","spacenews.com",
+    "arstechnica.com","universetoday.com","payloadspace.com",
+    "rocketlaunch.live"
 }
-
-# ---------- Scoring & Parsing ----------
 
 def relevance_score(title: str, summary: str) -> float:
     t = (title or "").lower()
@@ -110,6 +136,7 @@ def relevance_score(title: str, summary: str) -> float:
 
 def _parse(url): return feedparser.parse(url)
 
+# ---------- Fetchers ----------
 def fetch_rss_news():
     out = []
     for url in NEWS_FEEDS:
@@ -140,6 +167,26 @@ def fetch_rss_news():
     out.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
     return out
 
+def fetch_nitter_signals():
+    """Digest-only; use as a signal to boost trusted items in breaking if very fresh."""
+    sigs = []
+    for url in NITTER_FEEDS:
+        try:
+            feed = _parse(url)
+            for e in feed.entries[:15]:
+                t = _entry_time(e)
+                if not t or not is_recent(t, hours=1):  # only very recent signals
+                    continue
+                title = getattr(e,"title","")
+                link  = getattr(e,"link","")
+                text  = clean_html_to_text(getattr(e,"summary","") or title, 200).lower()
+                if any(w in text for w in PRIORITY_WORDS):
+                    sigs.append({"title": title, "link": link, "published": t})
+        except Exception as ex:
+            print(f"[NITTER] {url} -> {ex}")
+    sigs.sort(key=lambda x: x["published"], reverse=True)
+    return sigs
+
 def fetch_images():
     imgs = []
     for url in IMAGE_FEEDS:
@@ -152,11 +199,11 @@ def fetch_images():
                 link  = getattr(e,"link","")
                 raw   = getattr(e,"summary","") or getattr(e,"description","")
                 summary = clean_html_to_text(raw, 260)
-                # crude image URL guess
-                img = getattr(e, "media_content", None)
+                # try media_content first
                 img_url = None
-                if img and isinstance(img, list) and img[0].get('url'):
-                    img_url = img[0]['url']
+                mc = getattr(e, "media_content", None)
+                if mc and isinstance(mc, list) and mc[0].get("url"):
+                    img_url = mc[0]["url"]
                 else:
                     m = re.search(r'(https?://\S+\.(?:jpg|jpeg|png))', raw or "", re.I)
                     if m: img_url = m.group(1)
@@ -168,28 +215,5 @@ def fetch_images():
                 })
         except Exception as ex:
             print(f"[IMG] {url} -> {ex}")
-    # prefer newer
     imgs.sort(key=lambda x: x["published"], reverse=True)
     return imgs
-
-# --- Launch schedule (RocketLaunch.Live RSS) ---
-
-def fetch_launch_schedule():
-    # The general RSS is already in NEWS_FEEDS; we parse here for schedule cache
-    url = "https://www.rocketlaunch.live/rss"
-    try:
-        feed = _parse(url)
-        launches = []
-        for e in feed.entries[:30]:
-            title = getattr(e,"title","")
-            link  = getattr(e,"link","")
-            t = _entry_time(e)
-            if not t: continue
-            launches.append({
-                "title": title, "url": link, "published": t,
-                "source": "rocketlaunch.live"
-            })
-        return launches
-    except Exception as ex:
-        print(f"[LAUNCH] rss -> {ex}")
-        return []
