@@ -1,34 +1,21 @@
-name: RedHorizon - Daily Digest
+name: RH Digest (09:00 UTC)
 on:
-  schedule:
-    - cron: "0 9 * * *"
+  schedule: [{ cron: "0 9 * * *" }]
   workflow_dispatch:
-permissions:
-  contents: write
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
-    concurrency: redhorizon-daily-digest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run daily digest
+        with: { python-version: "3.11", cache: "pip" }
+      - run: pip install -r requirements.txt
+      - name: Daily Digest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
         run: |
-          python -c "from src.tasks import run_daily_digest; print(run_daily_digest())"
-      - name: Commit state
-        run: |
-          git config user.email "bot@users.noreply.github.com"
-          git config user.name "redhorizon-bot"
-          git add data/*.json
-          git diff --staged --quiet || git commit -m "Update state [daily-digest]"
-          git push
+          python - << 'PY'
+          from src.tasks import run_daily_digest
+          print(run_daily_digest())
+          PY
