@@ -1,302 +1,195 @@
-# src/feeds.py — unified fetch (RSS + YouTube + X via Nitter) with filters
+# feeds.py
+import feedparser, requests, re, html
+from datetime import datetime, timedelta, timezone
 
-import feedparser
-from urllib.parse import urlparse
-from datetime import datetime, timedelta
-import time
+# ---------- Helpers ----------
 
-# -------- Feeds --------
+TAG_RE = re.compile(r"<[^>]+>")
+WS_RE = re.compile(r"\s+")
+DOMAIN_RE = re.compile(r"https?://(www\.)?([^/]+)")
 
-RSS_FEEDS = [
-    # Core news
+def _now(): return datetime.now(timezone.utc)
+
+def clean_html_to_text(s: str, limit: int = 320) -> str:
+    if not s: return ""
+    s = TAG_RE.sub(" ", s)
+    s = html.unescape(s)
+    s = WS_RE.sub(" ", s).strip()
+    return s[:limit] + ("…" if len(s) > limit else "")
+
+def _domain(url: str) -> str:
+    m = DOMAIN_RE.match(url or "")
+    return (m.group(2) if m else "").lower()
+
+def _entry_time(e):
+    t = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+    if not t: return None
+    return datetime(*t[:6], tzinfo=timezone.utc)
+
+def is_recent(dt: datetime, hours=48) -> bool:
+    return (_now() - dt) <= timedelta(hours=hours)
+
+def is_english(text: str) -> bool:
+    # very light heuristic
+    if not text: return True
+    nonlatin = re.findall(r"[^\x00-\x7F]", text)
+    return len(nonlatin) < max(4, len(text)//12)
+
+# ---------- Feeds ----------
+
+# News (expanded)
+NEWS_FEEDS = [
     "https://www.nasa.gov/rss/dyn/breaking_news.rss",
     "https://science.nasa.gov/feed/",
     "https://mars.nasa.gov/rss/news/",
-    "https://www.esa.int/rssfeed/Our_Activities/Space_News",
     "https://spacenews.com/feed/",
-    "https://spaceflightnow.com/feed/",
-    "https://www.nasaspaceflight.com/feed/",
+    "https://www.spaceflightnow.com/feed/",
     "https://everydayastronaut.com/feed/",
+    "https://www.nasaspaceflight.com/feed/",
+    "https://www.teslarati.com/category/space/feed/",
     "https://www.universetoday.com/feed/",
     "https://phys.org/rss-feed/space-news/",
-    "https://www.teslarati.com/category/space/feed/",
-    "https://www.blueorigin.com/rss/",
-
-    # Launch schedules / trackers
-    "https://spaceflightnow.com/launch-schedule/feed/",
-    "https://everydayastronaut.com/launches/feed/",
-    "https://rocketlaunch.live/rss",
-
-    # Deep space / science
-    "https://www.jpl.nasa.gov/feeds/news",
-    "https://www.astronomy.com/feed/",
-    "https://www.scientificamerican.com/feed/space/",
+    "https://www.esa.int/rssfeed/Our_Activities/Space_News",
+    # Added high-signal sources
+    "https://feeds.arstechnica.com/arstechnica/space",
+    "https://www.theverge.com/rss/space/index.xml",
+    "https://www.ieee-oss.blackbarlabs.com/spectrum/space/feed",  # fallback mirror; IEEE RSS is fickle
+    "https://payloadspace.com/feed/",
+    "https://www.rocketlaunch.live/rss",
 ]
 
+# Images (expanded)
 IMAGE_FEEDS = [
     "https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss",
     "https://mars.nasa.gov/rss/news/images/",
-    "https://photojournal.jpl.nasa.gov/rss",
-    # SpaceX Flickr (official)
-    "https://www.flickr.com/services/feeds/photos_public.gne?id=130608600@N05&lang=en-us&format=rss_200",
+    "https://www.flickr.com/services/feeds/photos_public.gne?id=28634332@N05&lang=en-us&format=rss_200", # SpaceX
+    "https://esahubble.org/rss/image_of_the_week/",
+    "https://webb.nasa.gov/content/webbLaunch/rss.xml",
+    "https://www.eso.org/public/rss/image_index.xml",
+    "https://apod.nasa.gov/apod.rss",
+    "https://www.uahirise.org/rss/",
+    "https://www.planetary.org/rss/feed"
 ]
 
-# YouTube (native RSS)
-YOUTUBE_FEEDS = [
-    "https://www.youtube.com/feeds/videos.xml?channel_id=UCtI0Hodo5o5dUb67FeUjDeA",  # SpaceX
-    "https://www.youtube.com/feeds/videos.xml?channel_id=UCSUu1lih2RifWkKtDOJdsBA",  # NASASpaceflight
-    "https://www.youtube.com/feeds/videos.xml?channel_id=UC6uKrU_WqJ1R2HMTY3LIx5Q",  # Everyday Astronaut
-    # Add more creators as desired
-]
-
-# X (Twitter) via Nitter (free RSS proxy)
-NITTER_HOSTS = [
-    "https://nitter.net",
-    "https://nitter.fdn.fr",
-    "https://nitter.poast.org",
-]
-X_FEEDS = [
-    "https://nitter.net/SpaceX/rss",
-    "https://nitter.net/elonmusk/rss",
-    "https://nitter.net/NASASpaceflight/rss",
-    "https://nitter.net/RGVaerialphotos/rss",
-    "https://nitter.net/SciGuySpace/rss",
-    "https://nitter.net/thesheetztweetz/rss",
-    "https://nitter.net/jeff_foust/rss",
-]
-
-# -------- Filters / Keywords --------
-
+# Breaking / priority logic
 KEYWORDS = [
-    # SpaceX / Starship / Starbase
     "spacex","starship","starbase","boca chica","falcon 9","falcon9","falcon-9",
-    "super heavy","booster","mechazilla","chopsticks","orbital launch mount","olm","olp",
+    "falcon heavy","super heavy","booster","mechazilla","chopsticks","olm","olp",
     "raptor","merlin","dragon","crew dragon","cargo dragon",
-    # Mars
-    "mars","terraform","habitat","isru","red planet",
-    # Agencies / programs
-    "nasa","esa","jpl","jwst","orion","sls","iss",
-    # Industry
-    "ula","vulcan","rocket lab","electron","neutron","blue origin","new glenn","new shepard",
-    "arianespace","ariane 6","vega","relativity","terran r","firefly","alpha",
-    # Launch-y words
-    "launch","liftoff","static fire","hotfire","wdr","wet dress","stack","destack","rollout","rollback","countdown","premiere","live",
+    "launch","liftoff","static fire","hotfire","wdr","wet dress","stack","destack",
+    "rollout","rollback","countdown","premiere","live","pad","orbital",
+    "mars","terraform","habitat","isru","red planet"
 ]
-
 NEGATIVE_HINTS = [
-    "opinion","editorial","sponsored","weekly","roundup","recap","newsletter","podcast"
+    "opinion","editorial","sponsored","newsletter","podcast","weekly","roundup","recap",
+    "jobs","hiring","appointment","promoted","funding round","earnings","stock",
 ]
-
 PRIORITY_WORDS = [
-    "launch","liftoff","static fire","hotfire","wdr","wet dress","stack","destack","rollout","rollback","countdown","premiere","live"
+    "launch","liftoff","static fire","hotfire","wdr","wet dress","stack","destack",
+    "rollout","rollback","countdown","premiere","live"
 ]
+BREAKING_WHITELIST = {
+    "nasaspaceflight.com","spaceflightnow.com","spacenews.com",
+    "nasa.gov","science.nasa.gov","esa.int",
+    "everydayastronaut.com","universetoday.com","rocketlaunch.live",
+    "arstechnica.com","theverge.com","payloadspace.com"
+}
 
-def _now_utc():
-    return datetime.utcnow()
-
-def _domain(url: str) -> str:
-    try:
-        return urlparse(url).netloc.lower().replace("www.", "")
-    except Exception:
-        return ""
-
-def is_english(text: str) -> bool:
-    if not text:
-        return True
-    # crude heuristic: mostly ASCII and some spaces
-    ascii_chars = sum(1 for c in text if ord(c) < 128)
-    ratio = ascii_chars / max(1, len(text))
-    return ratio > 0.85
+# ---------- Scoring & Parsing ----------
 
 def relevance_score(title: str, summary: str) -> float:
     t = (title or "").lower()
     s = (summary or "").lower()
     score = 0.0
     for kw in KEYWORDS:
-        if kw in t:
-            score += 1.5
-        if kw in s:
-            score += 0.8
+        if kw in t: score += 1.6
+        if kw in s: score += 0.9
     for neg in NEGATIVE_HINTS:
-        if neg in t or neg in s:
-            score -= 0.8
+        if neg in t or neg in s: score -= 1.2
     return score
 
-def is_recent(published_dt: datetime, hours=48) -> bool:
-    return (_now_utc() - published_dt) <= timedelta(hours=hours)
-
-def _entry_time(entry) -> datetime | None:
-    t = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
-    if not t:
-        return None
-    return datetime(*t[:6])
-
-def _trim(s: str, n: int) -> str:
-    s = s or ""
-    return (s[:n] + "…") if len(s) > n else s
-
-def _parse_feed(url: str):
-    return feedparser.parse(url)
-
-def _with_nitter_failover(url: str):
-    # try default first; on failure, swap host sequentially
-    for host in NITTER_HOSTS:
-        u = url
-        try:
-            parsed = urlparse(url)
-            u = host + parsed.path
-            yield u
-        except Exception:
-            yield url
-
-def fetch_generic_feeds(feed_urls: list[str], freshness_hours=48, per_feed_limit=20):
-    """Returns list of dicts with unified shape from standard RSS feeds."""
-    out = []
-    now = _now_utc()
-    for feed_url in feed_urls:
-        try:
-            feed = _parse_feed(feed_url)
-            entries = feed.entries[:per_feed_limit]
-            for e in entries:
-                t = _entry_time(e)
-                if not t or not is_recent(t, hours=freshness_hours):
-                    continue
-                title = getattr(e, "title", "")
-                link = getattr(e, "link", "")
-                summary = getattr(e, "summary", "")
-                if not (is_english(title) and is_english(summary)):
-                    continue
-                score = relevance_score(title, summary)
-                if score <= 0.5:
-                    continue
-                out.append({
-                    "title": title,
-                    "link": link,
-                    "summary": _trim(summary, 320),
-                    "published": t,
-                    "is_breaking": (_now_utc() - t) <= timedelta(minutes=15),
-                    "is_super_breaking": (_now_utc() - t) <= timedelta(minutes=5),
-                    "score": score,
-                    "source": _domain(link) or _domain(feed_url),
-                    "priority": any(w in (title.lower() + " " + summary.lower()) for w in PRIORITY_WORDS),
-                })
-        except Exception as ex:
-            print(f"[RSS] error {feed_url}: {ex}")
-            continue
-    # sort by score then recency
-    out.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
-    return out
-
-def fetch_youtube_feeds(freshness_hours=72, per_feed_limit=15):
-    """YouTube feeds are regular Atom; treat like RSS."""
-    return fetch_generic_feeds(YOUTUBE_FEEDS, freshness_hours, per_feed_limit)
-
-def fetch_nitter_feeds(freshness_hours=24, per_feed_limit=15):
-    """Try Nitter hosts with basic failover."""
-    out = []
-    for base_u in X_FEEDS:
-        success = False
-        for u in _with_nitter_failover(base_u):
-            try:
-                feed = _parse_feed(u)
-                if getattr(feed, "bozo", 0):
-                    raise Exception("parse error")
-                entries = feed.entries[:per_feed_limit]
-                for e in entries:
-                    t = _entry_time(e)
-                    if not t or not is_recent(t, hours=freshness_hours):
-                        continue
-                    title = getattr(e, "title", "")
-                    link = getattr(e, "link", "")
-                    summary = getattr(e, "summary", title)
-                    if not (is_english(title) and is_english(summary)):
-                        continue
-                    score = relevance_score(title, summary)
-                    if score <= 0.5:
-                        continue
-                    out.append({
-                        "title": title,
-                        "link": link,
-                        "summary": _trim(summary, 280),
-                        "published": t,
-                        "is_breaking": (_now_utc() - t) <= timedelta(minutes=15),
-                        "is_super_breaking": (_now_utc() - t) <= timedelta(minutes=5),
-                        "score": score + 0.2,  # slight boost for live signals
-                        "source": "nitter.net",
-                        "priority": any(w in (title.lower() + " " + summary.lower()) for w in PRIORITY_WORDS),
-                    })
-                success = True
-                break
-            except Exception as ex:
-                print(f"[Nitter] fail {u}: {ex}")
-                time.sleep(0.5)
-        if not success:
-            print(f"[Nitter] all hosts failed for {base_u}")
-    out.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
-    return out
-
-def fetch_images(per_feed_limit=12):
-    """Return list of images with url/title/source_name/source_link/description."""
-    out = []
-    for feed_url in IMAGE_FEEDS:
-        try:
-            feed = _parse_feed(feed_url)
-            entries = feed.entries[:per_feed_limit]
-            for e in entries:
-                t = _entry_time(e)
-                title = getattr(e, "title", "") or "Space image"
-                link = getattr(e, "link", "")
-                desc = getattr(e, "summary", "")
-                # try common media fields
-                img_url = ""
-                if "media_content" in e:
-                    m = e.media_content
-                    if isinstance(m, list) and m:
-                        img_url = m[0].get("url") or img_url
-                    elif isinstance(m, dict):
-                        img_url = m.get("url") or img_url
-                if not img_url and "links" in e:
-                    for L in e.links:
-                        if getattr(L, "type", "").startswith("image/"):
-                            img_url = getattr(L, "href", "")
-                            break
-                if not img_url:
-                    # some feeds (Flickr) put img in summary HTML; we skip parsing aggressively here
-                    continue
-
-                out.append({
-                    "title": title,
-                    "url": img_url,
-                    "source_name": _domain(link) or _domain(feed_url),
-                    "source_link": link or feed_url,
-                    "description": _trim(desc, 300),
-                    "published": t or _now_utc()
-                })
-        except Exception as ex:
-            print(f"[IMG] error {feed_url}: {ex}")
-            continue
-    # most recent first
-    out.sort(key=lambda x: x["published"] or _now_utc(), reverse=True)
-    return out
+def _parse(url): return feedparser.parse(url)
 
 def fetch_rss_news():
-    """
-    Unified news list from: core RSS + YouTube + X/Nitter.
-    Returns a single list of dicts with fields used by tasks.py.
-    """
-    combined = []
-    combined += fetch_generic_feeds(RSS_FEEDS, freshness_hours=48, per_feed_limit=20)
-    combined += fetch_youtube_feeds(freshness_hours=72, per_feed_limit=12)
-    combined += fetch_nitter_feeds(freshness_hours=24, per_feed_limit=12)
+    out = []
+    for url in NEWS_FEEDS:
+        try:
+            feed = _parse(url)
+            for e in feed.entries[:25]:
+                t = _entry_time(e)
+                if not t or not is_recent(t, 48): continue
+                title = getattr(e,"title","")
+                link  = getattr(e,"link","")
+                raw   = getattr(e,"summary","") or getattr(e,"description","")
+                summary = clean_html_to_text(raw, 320)
+                if not (is_english(title) and is_english(summary)): continue
+                dom = _domain(link) or _domain(url)
+                score = relevance_score(title, summary)
+                text_mix = (title + " " + summary).lower()
+                priority = any(w in text_mix for w in PRIORITY_WORDS)
+                out.append({
+                    "title": title, "link": link, "summary": summary,
+                    "published": t, "source": dom,
+                    "is_breaking": (_now() - t) <= timedelta(minutes=15),
+                    "is_super_breaking": (_now() - t) <= timedelta(minutes=5),
+                    "score": score + (0.8 if priority else 0),
+                    "priority": priority
+                })
+        except Exception as ex:
+            print(f"[RSS] {url} -> {ex}")
+    out.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+    return out
 
-    # de-dupe by link
-    seen = set()
-    deduped = []
-    for a in combined:
-        if a["link"] in seen:
-            continue
-        seen.add(a["link"])
-        deduped.append(a)
+def fetch_images():
+    imgs = []
+    for url in IMAGE_FEEDS:
+        try:
+            feed = _parse(url)
+            for e in feed.entries[:20]:
+                t = _entry_time(e)
+                if not t or not is_recent(t, 96): continue
+                title = getattr(e,"title","")
+                link  = getattr(e,"link","")
+                raw   = getattr(e,"summary","") or getattr(e,"description","")
+                summary = clean_html_to_text(raw, 260)
+                # crude image URL guess
+                img = getattr(e, "media_content", None)
+                img_url = None
+                if img and isinstance(img, list) and img[0].get('url'):
+                    img_url = img[0]['url']
+                else:
+                    m = re.search(r'(https?://\S+\.(?:jpg|jpeg|png))', raw or "", re.I)
+                    if m: img_url = m.group(1)
+                if not img_url: continue
+                imgs.append({
+                    "title": title, "url": img_url,
+                    "source_link": link, "source_name": _domain(link) or _domain(url),
+                    "description": summary, "published": t
+                })
+        except Exception as ex:
+            print(f"[IMG] {url} -> {ex}")
+    # prefer newer
+    imgs.sort(key=lambda x: x["published"], reverse=True)
+    return imgs
 
-    deduped.sort(key=lambda x: (x["is_super_breaking"], x["is_breaking"], x["priority"], x["score"], x["published"]), reverse=True)
-    return deduped
+# --- Launch schedule (RocketLaunch.Live RSS) ---
+
+def fetch_launch_schedule():
+    # The general RSS is already in NEWS_FEEDS; we parse here for schedule cache
+    url = "https://www.rocketlaunch.live/rss"
+    try:
+        feed = _parse(url)
+        launches = []
+        for e in feed.entries[:30]:
+            title = getattr(e,"title","")
+            link  = getattr(e,"link","")
+            t = _entry_time(e)
+            if not t: continue
+            launches.append({
+                "title": title, "url": link, "published": t,
+                "source": "rocketlaunch.live"
+            })
+        return launches
+    except Exception as ex:
+        print(f"[LAUNCH] rss -> {ex}")
+        return []
