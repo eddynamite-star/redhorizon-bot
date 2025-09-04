@@ -1,385 +1,208 @@
-# src/tasks.py — polished output + launch scan/reminders
-
-import os
-import json
-import random
-import re
+# tasks.py
+import os, json, random
+from datetime import datetime, timedelta, timezone
 import requests
-from typing import Dict, Any, List
-from datetime import datetime, timedelta
 
-from src.feeds import fetch_rss_news, fetch_images
+from src.feeds import (
+    fetch_rss_news, fetch_images, fetch_launch_schedule,
+    BREAKING_WHITELIST, NEGATIVE_HINTS
+)
 from src.formatter import (
     fmt_breaking, fmt_priority, fmt_digest, fmt_image_post,
-    fmt_starbase_fact, fmt_book_spotlight, fmt_welcome
 )
 
-# ---------- paths ----------
-DATA_DIR = "data"
-SEEN_FILE = os.path.join(DATA_DIR, "seen_links.json")
-BOOK_IDX_FILE = os.path.join(DATA_DIR, "book_index.json")
-FACT_IDX_FILE = os.path.join(DATA_DIR, "fact_index.json")
-BOOK_LIST_FILE = os.path.join(DATA_DIR, "book_list.json")
-LAUNCH_CACHE_FILE = os.path.join(DATA_DIR, "launch_cache.json")
+# ---------- Files ----------
+SEEN_FILE   = "data/seen_links.json"
+BOOK_IDX    = "data/book_index.json"
+FACT_IDX    = "data/fact_index.json"
+LAUNCH_FILE = "data/launch_cache.json"
+
+def _now(): return datetime.now(timezone.utc)
 
 def _ensure_files():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    for path, default in [
-        (SEEN_FILE, {}),
-        (BOOK_IDX_FILE, {"index": 0}),
-        (FACT_IDX_FILE, {"index": 0}),
-        (LAUNCH_CACHE_FILE, []),
+    for p, init in [
+        (SEEN_FILE, {}), (BOOK_IDX, {"index":0}),
+        (FACT_IDX, {"index":0}), (LAUNCH_FILE, [])
     ]:
-        if not os.path.exists(path):
-            with open(path, "w") as f:
-                json.dump(default, f)
+        if not os.path.exists(p):
+            with open(p,"w") as f: json.dump(init, f)
 
-def load_json(file_path: str):
+def load_json(p, default=None):
     try:
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except Exception:
-        # recover from missing/corrupt
-        if file_path.endswith("seen_links.json"):
-            return {}
-        if file_path.endswith("launch_cache.json"):
-            return []
-        return {"index": 0}
+        with open(p,"r") as f: return json.load(f)
+    except: return default if default is not None else {}
 
-def save_json(file_path: str, data: Any):
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "w") as f:
-        json.dump(data, f, indent=2)
+def save_json(p, data):
+    with open(p,"w") as f: json.dump(data, f, indent=2)
 
-# ---------- Telegram / Zapier ----------
-def send_telegram_message(html_text: str, retry=True, disable_preview=False):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    channel_id = os.getenv("TELEGRAM_CHANNEL_ID")
-    if not bot_token or not channel_id:
-        print("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID missing")
-        return False
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+# ---------- Telegram ----------
+def send_telegram_message(html_text, disable_preview=True, retry=True):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat  = os.getenv("TELEGRAM_CHANNEL_ID")
+    url   = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": channel_id,
-        "text": html_text,
+        "chat_id": chat, "text": html_text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": disable_preview
+        "disable_web_page_preview": bool(disable_preview),
     }
     try:
         r = requests.post(url, json=payload, timeout=20)
-        if r.status_code == 200:
-            print("ok")
-            return True
-        print(f"Telegram sendMessage error: {r.status_code} {r.text}")
+        if r.status_code == 200: return True
         if retry:
-            return send_telegram_message(html_text, retry=False, disable_preview=disable_preview)
+            return send_telegram_message(html_text, disable_preview, False)
+        print("TG error:", r.text)
     except Exception as e:
-        print(f"Telegram sendMessage exception: {e}")
+        print("TG exc:", e)
     return False
 
-def send_telegram_image(image_url: str, caption_html: str, retry=True):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    channel_id = os.getenv("TELEGRAM_CHANNEL_ID")
-    if not bot_token or not channel_id:
-        print("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID missing")
+def send_telegram_image(image_url, caption):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat  = os.getenv("TELEGRAM_CHANNEL_ID")
+    url   = f"https://api.telegram.org/bot{token}/sendPhoto"
+    payload = {"chat_id": chat, "photo": image_url, "caption": caption, "parse_mode":"HTML"}
+    try:
+        r = requests.post(url, json=payload, timeout=25)
+        return r.status_code == 200
+    except Exception as e:
+        print("TG image exc:", e)
         return False
-    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    payload = {
-        "chat_id": channel_id,
-        "photo": image_url,
-        "caption": caption_html,
-        "parse_mode": "HTML"
-    }
-    try:
-        r = requests.post(url, json=payload, timeout=30)
-        if r.status_code == 200:
-            print("ok")
-            return True
-        print(f"Telegram sendPhoto error: {r.status_code} {r.text}")
-        if retry:
-            return send_telegram_image(image_url, caption_html, retry=False)
-    except Exception as e:
-        print(f"Telegram sendPhoto exception: {e}")
-    return False
 
-def send_to_zapier(data: Dict[str, Any]):
+def send_to_zapier(data):
     hook = os.getenv("ZAPIER_HOOK_URL")
-    if not hook:
-        return True
+    if not hook: return True
     try:
-        r = requests.post(hook, json=data, timeout=15)
-        if r.status_code in (200, 201, 202, 204):
-            print("ok [Zapier]")
-            return True
-        print(f"Zapier error: {r.status_code} {r.text}")
+        r = requests.post(hook, json=data, timeout=10)
+        return r.status_code in (200,201)
     except Exception as e:
-        print(f"Zapier exception: {e}")
-    return True  # non-fatal
+        print("Zapier exc:", e)
+        return False
 
-# ---------- Copy helpers ----------
-BREAKING_INTROS = [
-    "🚨 <b>BREAKING</b> — {title}",
-    "⚡ <b>Just in</b> — {title}",
-    "🔥 <b>Hot off the press</b> — {title}",
-]
-LIVE_INTROS = [
-    "🟢 <b>Live/Now</b> — {title}",
-    "🟢 <b>Happening now</b> — {title}",
-    "🟢 <b>Live update</b> — {title}",
-]
-WHY_HINTS = [
-    (r"\bstarship\b", "Progress on Starship directly affects Mars architecture & payload cadence."),
-    (r"\bstatic fire|hotfire|engine test\b", "Firing milestones validate engines and clear the path to flight."),
-    (r"\brollout|stack|destack\b", "Vehicle movement hints at imminent testing or launch flow."),
-    (r"\blaunch\b", "Launch cadence and reliability drive reusability economics."),
-    (r"\bmars\b", "Anything Mars-related informs long-term habitation & ISRU strategy."),
-    (r"\bnasa|esa|jpl\b", "Agency collaboration & science shape mission windows and funding."),
-]
-def pick_intro(intros: list[str], title: str) -> str:
-    t = random.choice(intros)
-    return t.format(title=title)
-def why_it_matters(title: str, summary: str) -> str:
-    text = f"{title} {summary}".lower()
-    for pat, reason in WHY_HINTS:
-        if re.search(pat, text):
-            return f"• <i>Why it matters:</i> {reason}"
-    return ""
+# ---------- Helpers ----------
+def _is_spacexish(a: dict) -> bool:
+    text = (a.get("title","") + " " + a.get("summary","")).lower()
+    keys = ["spacex","starship","falcon 9","falcon9","falcon-9","falcon heavy",
+            "raptor","merlin","starbase","boca","elon musk","crew dragon","cargo dragon"]
+    return any(k in text for k in keys)
 
-# ---------- Tasks ----------
+def _is_blocked(text: str) -> bool:
+    t = (text or "").lower()
+    return any(b in t for b in NEGATIVE_HINTS)
+
+def _allow_breaking(art: dict) -> bool:
+    if _is_blocked(art["title"] + " " + art.get("summary","")):
+        return False
+    if art.get("source") not in BREAKING_WHITELIST:
+        return False
+    if art.get("priority"):
+        return True
+    strong = art.get("score", 0) >= 2.0
+    text = (art["title"] + " " + art.get("summary","")).lower()
+    core = any(k in text for k in ["spacex","starship","falcon","raptor","starbase","launch","static fire","wdr","liftoff","countdown"])
+    return strong and core
+
+# ---------- Jobs ----------
 def run_breaking_news():
-    """
-    Post ONLY when there is breaking content (no empty posts).
-    Super-breaking (<=5m): Live/Now style, Breaking (<=15m): Breaking style.
-    """
     _ensure_files()
-    seen = load_json(SEEN_FILE)
-    articles = fetch_rss_news()
-    now = datetime.utcnow()
+    seen = load_json(SEEN_FILE, {})
+    arts = fetch_rss_news()
     posted = 0
-
-    for art in articles[:12]:
-        if art["link"] in seen:
-            continue
+    for art in arts[:20]:
+        if art["link"] in seen: continue
+        if not (art.get("is_super_breaking") or art.get("is_breaking")): continue
+        if not _allow_breaking(art): continue
 
         if art.get("is_super_breaking"):
-            header = pick_intro(LIVE_INTROS, art["title"])
-            base = fmt_priority(title=art["title"], url=art["link"], reason="Super-priority", tags=["Breaking","Live"])
-            msg = base.replace("🟢 <b>Live/Now</b>", header.split(" — ")[0], 1)
-        elif art.get("is_breaking"):
-            header = pick_intro(BREAKING_INTROS, art["title"])
-            base = fmt_breaking(
-                title=art["title"],
-                url=art["link"],
-                summary=art.get("summary",""),
-                tags=["Breaking"],
-                source_hint=art.get("source","")
-            )
-            msg = base.replace("🚨 <b>BREAKING</b>", header.split(" — ")[0], 1)
-            why = why_it_matters(art["title"], art.get("summary",""))
-            if why:
-                msg = msg.replace("Read more", f"{why}\n\nRead more", 1)
+            msg = fmt_priority(title=art["title"], url=art["link"], reason="Super-priority", tags=["Breaking","Live"])
         else:
-            continue
+            msg = fmt_breaking(title=art["title"], url=art["link"], summary=art.get("summary",""), tags=["Breaking"], source_hint=art.get("source",""))
 
-        if send_telegram_message(msg):
+        if send_telegram_message(msg, disable_preview=True):
             seen[art["link"]] = True
             posted += 1
-            send_to_zapier({"text": strip_html_for_x(msg), "url": art["link"], "kind": "breaking"})
-        if posted >= 2:
-            break
-
+            send_to_zapier({"text":"breaking", "url":art["link"]})
+        if posted >= 2: break
     save_json(SEEN_FILE, seen)
     return "ok" if posted else "no-post"
 
 def run_daily_digest():
     _ensure_files()
-    seen = load_json(SEEN_FILE)
-    articles = fetch_rss_news()
-    now = datetime.utcnow()
-    recent = [a for a in articles if (now - a["published"]) <= timedelta(hours=24)]
-    top = recent[:7]
+    seen = load_json(SEEN_FILE, {})
+    arts = fetch_rss_news()
+    now = _now()
+    recent = [a for a in arts if (now - a["published"]) <= timedelta(hours=24)]
+    if not recent: return "no-post"
 
-    items = [{"title": a["title"], "url": a["link"], "source": a.get("source")} for a in top]
-    date_label = now.strftime("%b %d, %Y")
-    msg = fmt_digest(date_label=date_label, items=items, tags=["Daily"], footer_x="https://x.com/RedHorizonHub")
+    ordered = sorted(
+        recent,
+        key=lambda a: (0 if _is_spacexish(a) else 1, -float(a.get("score",0)), -a["published"].timestamp())
+    )
+    top = ordered[:5]
+    items = [{
+        "title": a["title"], "url": a["link"], "source": a.get("source"),
+        "blurb": (a.get("summary") or "").strip(), "time_utc": a["published"].strftime("%H:%M")
+    } for a in top]
 
-    if top and send_telegram_message(msg):
-        for a in top:
-            seen[a["link"]] = True
+    msg = fmt_digest(now.strftime("%b %d, %Y"), items, tags=["Daily"], footer_x="https://x.com/RedHorizonHub")
+    if send_telegram_message(msg, disable_preview=True):
+        for a in top: seen[a["link"]] = True
         save_json(SEEN_FILE, seen)
-        send_to_zapier({"text": strip_html_for_x(msg), "kind": "digest"})
+        send_to_zapier({"text":"digest"})
         return "ok"
     return "no-post"
 
 def run_daily_image():
     _ensure_files()
-    seen = load_json(SEEN_FILE)
-    fact_idx = load_json(FACT_IDX_FILE)
+    seen = load_json(SEEN_FILE, {})
     images = fetch_images()
-
     for img in images:
-        url = img.get("url")
-        if not url or url in seen:
-            continue
+        if img["url"] in seen: continue
         caption = fmt_image_post(
             title=img.get("title","Space image"),
-            url=img.get("source_link", url),
+            url=img.get("source_link", img.get("url","")),
             credit=img.get("source_name",""),
             tags=["Image"]
         )
-        if send_telegram_image(url, caption):
-            seen[url] = True
-            fact_idx["index"] = int(fact_idx.get("index", 0)) + 1
+        if send_telegram_image(img["url"], caption):
+            seen[img["url"]] = True
             save_json(SEEN_FILE, seen)
-            save_json(FACT_IDX_FILE, fact_idx)
-            send_to_zapier({"image_url": url, "caption": strip_html_for_x(caption), "kind": "image"})
+            send_to_zapier({"image_url": img["url"], "caption": caption})
             return "ok"
-    return "no-post"
+    return "no-image"
 
-def run_starbase_highlight():
-    _ensure_files()
-    facts = [
-        ("High Bay", "Massive tower where Starship sections are stacked before rollout.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Mega/Wide Bay", "Larger, taller stacking facility supporting Ship and Booster flow.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Launch Integration Tower", "The tower that supports stacking and potential catching operations.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Chopsticks", "Mechazilla catch arms for lift and (eventually) catch operations.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Orbital Launch Mount", "Holds the Booster, with hold-down clamps and water deluge hardware.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Propellant Farm", "Cryogenic storage for methane/oxygen used in tests and launches.", "https://www.nasaspaceflight.com/tag/starbase/"),
-        ("Suborbital Pads", "Legacy pads used for Starship prototype tests.", "https://www.nasaspaceflight.com/tag/starbase/"),
-    ]
-    fact_idx = load_json(FACT_IDX_FILE)
-    idx = int(fact_idx.get("index", 0)) % len(facts)
-    title, body, ref = facts[idx]
-    msg = fmt_starbase_fact(title=title, body=body, ref_url=ref, tags=["Starbase"])
-    if send_telegram_message(msg):
-        fact_idx["index"] = idx + 1
-        save_json(FACT_IDX_FILE, fact_idx)
-        send_to_zapier({"text": strip_html_for_x(msg), "url": ref, "kind": "starbase"})
-        return "ok"
-    return "no-post"
-
-def run_book_spotlight():
-    """
-    Expects data/book_list.json entries:
-    [{"title":"Red Mars","author":"Kim Stanley Robinson","blurb":"...","wiki_link":"https://en.wikipedia.org/wiki/Red_Mars"}]
-    """
-    _ensure_files()
-    books = load_json(BOOK_LIST_FILE)
-    if not isinstance(books, list) or not books:
-        print("No books.json list found")
-        return "no-post"
-    book_idx = load_json(BOOK_IDX_FILE)
-    i = int(book_idx.get("index", 0)) % len(books)
-    b = books[i]
-    title = b.get("title", "Recommended book")
-    author = b.get("author", "")
-    blurb = b.get("blurb", "A standout pick for space & sci-fi fans.")
-    url = b.get("wiki_link") or b.get("link") or ""
-    msg = fmt_book_spotlight(title=title, author=author, blurb=blurb, url=url, tags=["Books","SciFi"])
-    if send_telegram_message(msg):
-        book_idx["index"] = i + 1
-        save_json(BOOK_IDX_FILE, book_idx)
-        send_to_zapier({"text": strip_html_for_x(msg), "url": url, "kind": "book"})
-        return "ok"
-    return "no-post"
-
-def run_welcome_message():
-    msg = fmt_welcome("https://x.com/RedHorizonHub")
-    if send_telegram_message(msg):
-        send_to_zapier({"text": strip_html_for_x(msg), "kind": "welcome"})
-        return "ok"
-    return "no-post"
-
-# ---------- Launch scan & reminders ----------
-# Simple heuristic: detect likely launch items, store with timestamp if found, remind at T-24h and T-1h.
-LAUNCH_PATTERNS = [
-    r"\blaunch\b", r"\bcountdown\b", r"\bliftoff\b", r"\blive\b", r"\bpremiere\b",
-]
-TIME_HINTS = [
-    r"\bT[-\s]?(\d+)\s*min\b", r"\bT[-\s]?(\d+)\s*hr\b",
-    r"\b(\d{1,2}:\d{2})\s*(UTC|GMT)\b",
-    r"\b(\d{1,2})\s*(UTC|GMT)\b",
-]
-
-def is_launchy(title: str, summary: str) -> bool:
-    text = f"{title} {summary}".lower()
-    return any(re.search(p, text) for p in LAUNCH_PATTERNS)
-
+# ---- Launch scanning & reminders ----
 def run_scan_launches():
-    """
-    Scan feeds; cache potential launch items with rough schedule if present.
-    """
     _ensure_files()
-    cache = load_json(LAUNCH_CACHE_FILE)
-    seen_links = set(x.get("link") for x in cache)
-
-    arts = fetch_rss_news()
-    new = 0
-    for a in arts[:40]:
-        if a["link"] in seen_links:
-            continue
-        if not is_launchy(a["title"], a.get("summary","")):
-            continue
-        # naive: store published time as reference; better if title has UTC time
-        when = a.get("published")
-        cache.append({
-            "title": a["title"],
-            "link": a["link"],
-            "source": a.get("source",""),
-            "published": (when.isoformat() if when else datetime.utcnow().isoformat()),
-            "t24_posted": False,
-            "t1_posted": False
-        })
-        new += 1
-
-    # trim cache to last 200
-    cache = sorted(cache, key=lambda x: x.get("published",""), reverse=True)[:200]
-    save_json(LAUNCH_CACHE_FILE, cache)
-    return f"ok (+{new})"
+    cache = load_json(LAUNCH_FILE, [])
+    launches = fetch_launch_schedule()
+    # Keep last 50
+    cache = launches[:50]
+    save_json(LAUNCH_FILE, cache)
+    return f"cached:{len(cache)}"
 
 def run_launch_reminders():
-    """
-    Post reminders for cached launch items roughly at T-24h and T-1h,
-    using the item's published time as a proxy (best-effort).
-    """
     _ensure_files()
-    cache = load_json(LAUNCH_CACHE_FILE)
-    now = datetime.utcnow()
-    updated = False
+    cache = load_json(LAUNCH_FILE, [])
+    if not cache: return "no-cache"
+
+    now = _now()
     posted = 0
-
-    for it in cache:
-        try:
-            pub = datetime.fromisoformat(it.get("published"))
-        except Exception:
-            continue
-        age = now - pub
-        # windows
-        t24 = timedelta(hours=24)
-        t1  = timedelta(hours=1)
-        within_10m = timedelta(minutes=10)
-
-        # T-24h (approx: when age ~ 24h)
-        if not it.get("t24_posted") and abs(age - t24) <= within_10m:
-            msg = f"⏰ <b>Launch in ~24 hours</b>\n{it['title']}\n<a href=\"{it['link']}\">Details / stream</a>\n#Launch #RedHorizon"
-            if send_telegram_message(msg):
-                it["t24_posted"] = True
-                posted += 1
-                updated = True
-
+    for lc in cache[:20]:
+        title = lc["title"]; url = lc["url"]; t = lc["published"]
+        dtm = (t - now).total_seconds()/60.0
+        key24 = f"{url}#T24"; key1 = f"{url}#T1"; keyL = f"{url}#L0"
+        marks = load_json(SEEN_FILE, {})
+        # T-24h
+        if 60*23.5 <= (t - now).total_seconds() <= 60*24.5 and not marks.get(key24):
+            msg = fmt_priority(title=f"T-24h: {title}", url=url, reason="Launch in 24h", tags=["Launch","Reminder"])
+            if send_telegram_message(msg): marks[key24]=True; posted+=1
         # T-1h
-        if not it.get("t1_posted") and abs(age - t1) <= within_10m:
-            msg = f"🚀 <b>Launch in ~1 hour</b>\n{it['title']}\n<a href=\"{it['link']}\">Watch live</a>\n#Launch #RedHorizon"
-            if send_telegram_message(msg):
-                it["t1_posted"] = True
-                posted += 1
-                updated = True
-
-    if updated:
-        save_json(LAUNCH_CACHE_FILE, cache)
-    return f"ok (posted {posted})"
-
-# ---------- helper for Zapier/X ----------
-TAG_RE = re.compile(r"<[^>]+>")
-def strip_html_for_x(s: str) -> str:
-    return TAG_RE.sub("", s).strip()
+        if 30 <= dtm <= 90 and not marks.get(key1):
+            msg = fmt_priority(title=f"T-1h: {title}", url=url, reason="Launch in 1 hour", tags=["Launch","Reminder"])
+            if send_telegram_message(msg): marks[key1]=True; posted+=1
+        # Liftoff window (±10m)
+        if -10 <= dtm <= 10 and not marks.get(keyL):
+            msg = fmt_priority(title=f"Liftoff window: {title}", url=url, reason="Liftoff", tags=["Launch","Live"])
+            if send_telegram_message(msg): marks[keyL]=True; posted+=1
+        save_json(SEEN_FILE, marks)
+        if posted >= 3: break
+    return "ok" if posted else "no-post"
