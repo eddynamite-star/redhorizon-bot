@@ -4,11 +4,12 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from src.feeds import (
-    fetch_rss_news, fetch_images, fetch_launch_schedule,
+    fetch_rss_news, fetch_images, fetch_launch_schedule,  # launch schedule via rocketlaunch.live RSS
+    fetch_nitter_signals,
     BREAKING_WHITELIST, NEGATIVE_HINTS
 )
 from src.formatter import (
-    fmt_breaking, fmt_priority, fmt_digest, fmt_image_post,
+    fmt_breaking, fmt_priority, fmt_digest, fmt_image_post, fmt_welcome,
 )
 
 # ---------- Files ----------
@@ -47,12 +48,13 @@ def send_telegram_message(html_text, disable_preview=True, retry=True):
     }
     try:
         r = requests.post(url, json=payload, timeout=20)
-        if r.status_code == 200: return True
+        if r.status_code == 200:
+            return True
+        print(f"[TG] sendMessage failed: {r.status_code} {r.text}")
         if retry:
             return send_telegram_message(html_text, disable_preview, False)
-        print("TG error:", r.text)
     except Exception as e:
-        print("TG exc:", e)
+        print("[TG] exception:", e)
     return False
 
 def send_telegram_image(image_url, caption):
@@ -62,6 +64,8 @@ def send_telegram_image(image_url, caption):
     payload = {"chat_id": chat, "photo": image_url, "caption": caption, "parse_mode":"HTML"}
     try:
         r = requests.post(url, json=payload, timeout=25)
+        if r.status_code != 200:
+            print(f"[TG] sendPhoto failed: {r.status_code} {r.text}")
         return r.status_code == 200
     except Exception as e:
         print("TG image exc:", e)
@@ -88,34 +92,50 @@ def _is_blocked(text: str) -> bool:
     t = (text or "").lower()
     return any(b in t for b in NEGATIVE_HINTS)
 
-def _allow_breaking(art: dict) -> bool:
+def _allow_breaking(art: dict, signals: list) -> bool:
+    """Only trusted domains; allow Nitter/X signals to boost but never post them directly."""
     if _is_blocked(art["title"] + " " + art.get("summary","")):
         return False
     if art.get("source") not in BREAKING_WHITELIST:
         return False
-    if art.get("priority"):
-        return True
-    strong = art.get("score", 0) >= 2.0
-    text = (art["title"] + " " + art.get("summary","")).lower()
-    core = any(k in text for k in ["spacex","starship","falcon","raptor","starbase","launch","static fire","wdr","liftoff","countdown"])
-    return strong and core
+    # strong keyword score OR priority
+    strong = art.get("score", 0) >= 2.0 or art.get("priority")
+    if not strong:
+        return False
+    # recent Nitter signal can help push it over the edge (within 30 min)
+    # (we already check domain whitelist here for the actual post)
+    if not art.get("priority"):
+        for s in signals:
+            if abs((s["published"] - art["published"]).total_seconds()) <= 1800:
+                return True
+    return True
 
-# ---------- Jobs ----------
+def _micro_explainer_for_image(title: str, source: str) -> str:
+    t = (title or "").lower() + " " + (source or "")
+    if any(k in t for k in ["jwst","webb","hubble","eso","galaxy","nebula","cluster"]):
+        return "Infrared views reveal dust-shrouded stars and galaxies invisible in visible light."
+    if any(k in t for k in ["mars","curiosity","perseverance","hirise","viking","jezero","gale"]):
+        return "Mars imagery helps map safe routes, study geology, and guide future landing sites."
+    if any(k in t for k in ["starbase","starship","falcon","liftoff","wdr","static fire","raptor"]):
+        return "Tracking build and test milestones is key to rapid reuse and lowering launch costs."
+    return ""
+
+# ---------- Core jobs ----------
 def run_breaking_news():
     _ensure_files()
     seen = load_json(SEEN_FILE, {})
     arts = fetch_rss_news()
+    signals = fetch_nitter_signals()  # digest-only signals to bias breaking
     posted = 0
-    for art in arts[:20]:
+    for art in arts[:25]:
         if art["link"] in seen: continue
         if not (art.get("is_super_breaking") or art.get("is_breaking")): continue
-        if not _allow_breaking(art): continue
+        if not _allow_breaking(art, signals): continue
 
-        if art.get("is_super_breaking"):
-            msg = fmt_priority(title=art["title"], url=art["link"], reason="Super-priority", tags=["Breaking","Live"])
-        else:
-            msg = fmt_breaking(title=art["title"], url=art["link"], summary=art.get("summary",""), tags=["Breaking"], source_hint=art.get("source",""))
-
+        msg = fmt_breaking(
+            title=art["title"], url=art["link"], summary=art.get("summary",""),
+            tags=["Breaking"], source_hint=art.get("source","")
+        )
         if send_telegram_message(msg, disable_preview=True):
             seen[art["link"]] = True
             posted += 1
@@ -156,11 +176,13 @@ def run_daily_image():
     images = fetch_images()
     for img in images:
         if img["url"] in seen: continue
+        expl = _micro_explainer_for_image(img.get("title",""), img.get("source_name",""))
         caption = fmt_image_post(
             title=img.get("title","Space image"),
             url=img.get("source_link", img.get("url","")),
             credit=img.get("source_name",""),
-            tags=["Image"]
+            tags=["Image"],
+            explainer=expl
         )
         if send_telegram_image(img["url"], caption):
             seen[img["url"]] = True
@@ -169,48 +191,144 @@ def run_daily_image():
             return "ok"
     return "no-image"
 
-# ---- Launch scanning & reminders ----
+# ---------- Launch scanning & reminders ----------
+def fetch_launch_schedule():
+    # kept here for import compatibility; RocketLaunch.Live feed is in NEWS_FEEDS
+    from src.feeds import _parse, _entry_time
+    url = "https://www.rocketlaunch.live/rss"
+    try:
+        feed = _parse(url)
+        launches = []
+        for e in feed.entries[:30]:
+            t = _entry_time(e)
+            if not t: continue
+            launches.append({
+                "title": getattr(e,"title",""),
+                "url": getattr(e,"link",""),
+                "published": t,
+                "source": "rocketlaunch.live",
+            })
+        return launches
+    except Exception as ex:
+        print(f"[LAUNCH] rss -> {ex}")
+        return []
+
 def run_scan_launches():
     _ensure_files()
-    cache = load_json(LAUNCH_FILE, [])
     launches = fetch_launch_schedule()
-    # Keep last 50
-    cache = launches[:50]
-    save_json(LAUNCH_FILE, cache)
-    return f"cached:{len(cache)}"
+    launches = sorted(launches, key=lambda x: x["published"])
+    save_json(LAUNCH_FILE, launches[:50])
+    return f"cached:{len(launches[:50])}"
 
 def run_launch_reminders():
     _ensure_files()
     cache = load_json(LAUNCH_FILE, [])
     if not cache: return "no-cache"
-
     now = _now()
+    marks = load_json(SEEN_FILE, {})  # reuse as flags
     posted = 0
+
     for lc in cache[:20]:
-        title = lc["title"]; url = lc["url"]; t = lc["published"]
+        title, url, t = lc["title"], lc["url"], lc["published"]
         dtm = (t - now).total_seconds()/60.0
         key24 = f"{url}#T24"; key1 = f"{url}#T1"; keyL = f"{url}#L0"
-        marks = load_json(SEEN_FILE, {})
-        # T-24h
+
         if 60*23.5 <= (t - now).total_seconds() <= 60*24.5 and not marks.get(key24):
             msg = fmt_priority(title=f"T-24h: {title}", url=url, reason="Launch in 24h", tags=["Launch","Reminder"])
             if send_telegram_message(msg): marks[key24]=True; posted+=1
-        # T-1h
         if 30 <= dtm <= 90 and not marks.get(key1):
             msg = fmt_priority(title=f"T-1h: {title}", url=url, reason="Launch in 1 hour", tags=["Launch","Reminder"])
             if send_telegram_message(msg): marks[key1]=True; posted+=1
-        # Liftoff window (±10m)
         if -10 <= dtm <= 10 and not marks.get(keyL):
             msg = fmt_priority(title=f"Liftoff window: {title}", url=url, reason="Liftoff", tags=["Launch","Live"])
             if send_telegram_message(msg): marks[keyL]=True; posted+=1
-        save_json(SEEN_FILE, marks)
-        if posted >= 3: break
-    return "ok" if posted else "no-post"
-    def run_welcome_message():
-    from src.formatter import fmt_welcome
-    _ensure_files()
-    msg = fmt_welcome("https://x.com/RedHorizonHub")
-    if send_telegram_message(msg, disable_preview=True):
-        return "ok"
-    return "no-post"
 
+        if posted >= 3: break
+
+    save_json(SEEN_FILE, marks)
+    return "ok" if posted else "no-post"
+
+# ---------- Engagement tasks ----------
+POLL_BANK = [
+    ("Most critical Starship milestone before Mars?",
+     ["Orbital refueling", "Rapid reuse", "Heat shield reliability", "Mechazilla catch"]),
+    ("Which test excites you most?", ["Static fire", "WDR", "Full stack", "Flight"]),
+    ("Next decade: first humans land on…?", ["Moon", "Mars", "Neither", "Both"]),
+    ("Best telescope image type?", ["Nebulae", "Galaxies", "Exoplanets", "Deep fields"]),
+    ("Which rover image would you frame?", ["Perseverance", "Curiosity", "Spirit", "Opportunity"]),
+    ("Most underrated Mars challenge?", ["Dust", "EDL", "ISRU", "Radiation"]),
+    ("What would you test first at Starbase?", ["Raptor ops", "Tile/TPS", "Catch arms", "OLP/OLM systems"]),
+]
+
+def send_poll(question: str, options: list[str]) -> bool:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat  = os.getenv("TELEGRAM_CHANNEL_ID")
+    url   = f"https://api.telegram.org/bot{token}/sendPoll"
+    payload = {"chat_id": chat, "question": question, "options": options, "is_anonymous": True, "allows_multiple_answers": False}
+    try:
+        r = requests.post(url, json=payload, timeout=20)
+        if r.status_code != 200:
+            print(f"[TG] sendPoll failed: {r.status_code} {r.text}")
+        return r.status_code == 200
+    except Exception as e:
+        print("[TG] poll exception:", e)
+        return False
+
+def run_weekly_poll():
+    q, opts = random.choice(POLL_BANK)
+    return "ok" if send_poll(q, opts) else "no-post"
+
+EXPLAINERS = [
+    ("What is a WDR (Wet Dress Rehearsal)?",
+     "A full countdown rehearsal with propellant loaded. It verifies tanks, valves, ground systems, and procedures before flight."),
+    ("Raptor vs Merlin in one minute",
+     "Raptor uses full-flow staged combustion with methane and oxygen—higher efficiency and reusability—while Merlin uses RP-1/LOX and is flight-proven."),
+    ("Why stainless steel for Starship?",
+     "It’s strong at cryogenic temps, handles high heat better, and is cheaper to manufacture at scale—useful for rapid reusability."),
+    ("TPS tiles (heat shield) explained",
+     "Thermal Protection System tiles protect Starship during reentry. Gaps and attachment reliability are constant engineering focus."),
+    ("EDL on Mars",
+     "Entry-Descent-Landing on Mars is hard due to thin atmosphere and dust. Heavy payloads need supersonic retropropulsion."),
+    ("ISRU on Mars",
+     "In-situ resource utilization: making methane and oxygen from Martian CO₂ and water via the Sabatier reaction to refuel Starship."),
+]
+
+def run_weekly_explainer():
+    title, body = random.choice(EXPLAINERS)
+    msg = f"🧭 <b>{title}</b>\n{body}\n\n#Explainer #RedHorizon"
+    return "ok" if send_telegram_message(msg, disable_preview=True) else "no-post"
+
+CHALLENGES = [
+    "Sketch a Mars habitat module for 4 people. What’s your power source?",
+    "Design a Starbase test you’d run before the next flight.",
+    "Write a 100-word story: first night on Mars.",
+    "Map a week of ISRU ops with 2 robots.",
+    "Choose: bigger heat shield or lighter payload—and justify.",
+    "Your Mars EVA kit: what 5 non-standard items do you pack?",
+]
+
+def run_monthly_challenge():
+    prompt = random.choice(CHALLENGES)
+    msg = f"🧪 <b>Monthly Challenge</b>\n{prompt}\n\nShare your idea in the comments!\n#Challenge #RedHorizon"
+    return "ok" if send_telegram_message(msg, disable_preview=True) else "no-post"
+
+QNAS = [
+    "No such thing as a dumb question: what Mars acronym stumps you?",
+    "If you could ask SpaceX one question about Starship, what is it?",
+    "What’s your favorite JWST/Hubble image and why?",
+    "What would you test first if you ran Starbase for a day?",
+    "Which Mars mission changed your mind about something?",
+]
+
+def run_friday_qna():
+    q = random.choice(QNAS)
+    msg = f"💬 <b>Open Thread</b>\n{q}\n\n#Community #RedHorizon"
+    return "ok" if send_telegram_message(msg, disable_preview=True) else "no-post"
+
+# ---------- Welcome & Ping ----------
+def run_welcome_message():
+    msg = fmt_welcome("https://x.com/RedHorizonHub")
+    return "ok" if send_telegram_message(msg, disable_preview=True) else "no-post"
+
+def run_ping():
+    return "ok" if send_telegram_message("✅ Red Horizon is live", disable_preview=True) else "no-post"
