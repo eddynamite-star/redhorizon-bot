@@ -109,3 +109,13 @@ def fmt_image_post(title: str, url: str, credit: str = "", tags=None) -> str:
     extras = tags or []
     lines.append(build_hashtags(base + [t for t in extras if t not in base]))
     return clamp("\n".join(lines), TG_MAX_CAPTION)
+    def fmt_welcome(x_url: str = "https://x.com/RedHorizonHub") -> str:
+    lines = [
+        "👋 <b>Welcome to Red Horizon</b>",
+        "Your daily hub for Starship/SpaceX, Mars exploration, and standout space imagery.",
+        "What to expect:\n• 📰 Breaking every 15m\n• 🚀 Daily digests\n• 🏗 Starbase highlights\n• 📸 Images 3× daily",
+        f'Follow on X: <a href="{html.escape(x_url)}">@RedHorizonHub</a>',
+        build_hashtags(["Space","Mars","Starship","RedHorizon"]),
+    ]
+    return clamp("\n\n".join(lines), TG_MAX_TEXT)
+
