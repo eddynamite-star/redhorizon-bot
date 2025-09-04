@@ -206,3 +206,11 @@ def run_launch_reminders():
         save_json(SEEN_FILE, marks)
         if posted >= 3: break
     return "ok" if posted else "no-post"
+    def run_welcome_message():
+    from src.formatter import fmt_welcome
+    _ensure_files()
+    msg = fmt_welcome("https://x.com/RedHorizonHub")
+    if send_telegram_message(msg, disable_preview=True):
+        return "ok"
+    return "no-post"
+
