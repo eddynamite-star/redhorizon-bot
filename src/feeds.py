@@ -49,6 +49,40 @@ def is_english(text: str) -> bool:
     if not text: return True
     nonlatin = re.findall(r"[^\x00-\x7F]", text)
     return len(nonlatin) < max(4, len(text)//12)
+def _host(url: str) -> str:
+    try:
+        return urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+def _slug(url: str) -> str:
+    try:
+        p = urlparse(url).path.lower()
+        p = re.sub(r"/+", "/", p)
+        return p.strip("/").rsplit("/", 1)[-1]
+    except Exception:
+        return ""
+
+def _title_key(t: str) -> str:
+    t = re.sub(r"[^a-z0-9 ]+", " ", (t or "").lower())
+    t = re.sub(r"\s+", " ", t).strip()
+    # remove boilerplate words
+    t = re.sub(r"\b(spacex|nasa|esa|news|update|launch|rocket|starship|falcon|mars)\b", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+def _entry_image(entry) -> str:
+    # Try common RSS media fields
+    for key in ("media_content", "media_thumbnail"):
+        if getattr(entry, key, None):
+            cand = getattr(entry, key)[0].get("url")
+            if cand: return cand
+    # scan summary/content for first img
+    html = getattr(entry, "summary", "") or ""
+    if not html and getattr(entry, "content", None):
+        html = " ".join([c.get("value","") for c in entry.content])
+    m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
+    return m.group(1) if m else ""
+
 
 # ---------- Source lists ----------
 # NEWS: Your 30 sources mapped into feeds (robust → direct; weak → best-available)
@@ -154,35 +188,64 @@ def relevance_score(title: str, summary: str) -> float:
 def _parse(url): return feedparser.parse(url)
 
 # ---------- Fetchers ----------
-def fetch_rss_news():
-    out = []
-    for url in NEWS_FEEDS:
+def fetch_rss_news(is_terraforming=False):
+    articles = []
+    now = datetime.utcnow()
+    seen_keys = set()   # to kill near-duplicates
+
+    for feed_url in RSS_FEEDS:
         try:
-            feed = _parse(url)
-            for e in feed.entries[:25]:
-                t = _entry_time(e)
-                if not t or not is_recent(t, 48): continue
-                title = getattr(e,"title","")
-                link  = getattr(e,"link","")
-                raw   = getattr(e,"summary","") or getattr(e,"description","")
-                summary = clean_html_to_text(raw, 320)
-                if not (is_english(title) and is_english(summary)): continue
-                dom = _domain(link) or _domain(url)
-                score = relevance_score(title, summary)
-                text_mix = (title + " " + summary).lower()
-                priority = any(w in text_mix for w in PRIORITY_WORDS)
-                out.append({
-                    "title": title, "link": link, "summary": summary,
-                    "published": t, "source": dom,
-                    "is_breaking": (_now() - t) <= timedelta(minutes=15),
-                    "is_super_breaking": (_now() - t) <= timedelta(minutes=5),
-                    "score": score + (0.8 if priority else 0),
-                    "priority": priority
+            feed = feedparser.parse(feed_url)
+            src_title = getattr(feed.feed, "title", _host(feed_url))
+            for e in getattr(feed, "entries", [])[:50]:
+                published = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+                if not published:
+                    continue
+                tdt = datetime(*published[:6])
+                if (now - tdt) > timedelta(hours=48):
+                    continue
+
+                title = getattr(e, "title", "").strip()
+                link  = getattr(e, "link", "").strip()
+                summary = getattr(e, "summary", "") or ""
+                source_host = _host(link) or _host(feed_url)
+                source_name = src_title or source_host
+                img = _entry_image(e)
+
+                # basic relevance
+                s = score_article(title, summary)
+                if is_terraforming and any(k in (title+summary).lower()
+                                           for k in ["terraform", "habitability", "colonization", "isru"]):
+                    s += 3
+
+                # weight by source
+                s += SOURCE_WEIGHTS.get(source_host, 2)
+
+                # duplicate key (host + title key + slug)
+                dkey = (source_host, _title_key(title), _slug(link))
+                if dkey in seen_keys:
+                    continue
+                seen_keys.add(dkey)
+
+                # store
+                articles.append({
+                    "title": title,
+                    "link": link,
+                    "summary": summary,
+                    "published": tdt,
+                    "source": source_name,
+                    "source_host": source_host,
+                    "image": img,
+                    "score": s,
+                    "is_breaking": (now - tdt) <= timedelta(minutes=15),
+                    "is_super_breaking": (now - tdt) <= timedelta(minutes=5),
                 })
         except Exception as ex:
-            print(f"[RSS] {url} -> {ex}")
-    out.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
-    return out
+            print(f"[RSS] {feed_url} -> {ex}")
+
+    # prefer higher score, then newer
+    return sorted(articles, key=lambda x: (x["score"], x["published"]), reverse=True)
+
 
 def fetch_nitter_signals():
     """Digest-only; use as a signal to boost trusted items in breaking if very fresh."""
