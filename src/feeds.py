@@ -86,7 +86,7 @@ def _entry_image(entry) -> str:
 
 # ---------- Source lists ----------
 # NEWS: Your 30 sources mapped into feeds (robust → direct; weak → best-available)
-NEWS_FEEDS = [
+RSS_FEEDS = [
     # Official orgs
     "https://www.nasa.gov/rss/dyn/breaking_news.rss",
     "https://science.nasa.gov/feed/",
