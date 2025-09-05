@@ -2,6 +2,23 @@
 import feedparser, re, html
 from datetime import datetime, timedelta, timezone
 
+from urllib.parse import urlparse
+import re
+
+# Prefer official/news domains over aggregators
+SOURCE_WEIGHTS = {
+    "nasa.gov": 5, "science.nasa.gov": 5, "mars.nasa.gov": 5,
+    "spacex.com": 5, "esa.int": 5, "jaxa.jp": 5, "blueorigin.com": 4,
+    "spacenews.com": 5, "space.com": 4, "spaceflightnow.com": 4,
+    "nasaspaceflight.com": 4, "everydayastronaut.com": 4,
+    "universetoday.com": 4, "phys.org": 3,
+    "reddit.com": 1, "old.reddit.com": 1, "www.reddit.com": 1,
+}
+
+# Extra hashtags to append (rotate a few for variety on the task side)
+DEFAULT_TAGS = ["#SpaceX", "#Starship", "#Falcon9", "#Mars", "#NASA", "#RedHorizon", "#Spaceflight", "#Launch"]
+
+
 # ---------- Helpers ----------
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
