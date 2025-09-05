@@ -11,6 +11,8 @@ from src.feeds import (
 from src.formatter import (
     fmt_breaking, fmt_priority, fmt_digest, fmt_image_post, fmt_welcome,
 )
+from random import sample, shuffle
+from src.feeds import DEFAULT_TAGS
 
 # ---------- Files ----------
 SEEN_FILE   = "data/seen_links.json"
@@ -122,53 +124,90 @@ def _micro_explainer_for_image(title: str, source: str) -> str:
 
 # ---------- Core jobs ----------
 def run_breaking_news():
-    _ensure_files()
-    seen = load_json(SEEN_FILE, {})
-    arts = fetch_rss_news()
-    signals = fetch_nitter_signals()  # digest-only signals to bias breaking
-    posted = 0
-    for art in arts[:25]:
-        if art["link"] in seen: continue
-        if not (art.get("is_super_breaking") or art.get("is_breaking")): continue
-        if not _allow_breaking(art, signals): continue
+    seen_links = load_json("data/seen_links.json")
+    now = datetime.utcnow()
+    items = [a for a in fetch_rss_news()[:30] if a["is_breaking"]]
+    # favor SpaceX & high score
+    items = sorted(items, key=lambda x: (
+        any(k in (x["title"]+x["summary"]).lower() for k in ["spacex","starship","falcon","raptor","starbase"]),
+        x["score"], x["published"]), reverse=True)
 
-        msg = fmt_breaking(
-            title=art["title"], url=art["link"], summary=art.get("summary",""),
-            tags=["Breaking"], source_hint=art.get("source","")
+    posted = 0
+    for a in items[:2]:  # at most 2 per run
+        if a["link"] in seen_links:
+            continue
+        title = f"🚨 *BREAKING* — {a['title']}"
+        body  = (
+            f"{a['summary'][:400].rstrip()}…\n\n"
+            f"Read more: {a['link']}\n_{a['source']}_\n"
+            f"#Breaking #SpaceX #Starship #RedHorizon"
         )
-        if send_telegram_message(msg, disable_preview=True):
-            seen[art["link"]] = True
+        ok = False
+        if a.get("image"):
+            ok = send_telegram_image(a["image"], f"{title}\n\n{body}")
+        if not ok:
+            ok = send_telegram_message(f"{title}\n\n{body}")
+        if ok:
+            seen_links[a["link"]] = True
             posted += 1
-            send_to_zapier({"text":"breaking", "url":art["link"]})
-        if posted >= 2: break
-    save_json(SEEN_FILE, seen)
+
+    save_json("data/seen_links.json", seen_links)
     return "ok" if posted else "no-post"
 
+
 def run_daily_digest():
-    _ensure_files()
-    seen = load_json(SEEN_FILE, {})
-    arts = fetch_rss_news()
-    now = _now()
-    recent = [a for a in arts if (now - a["published"]) <= timedelta(hours=24)]
-    if not recent: return "no-post"
+    seen_links = load_json("data/seen_links.json")
+    now = datetime.utcnow()
 
-    ordered = sorted(
-        recent,
-        key=lambda a: (0 if _is_spacexish(a) else 1, -float(a.get("score",0)), -a["published"].timestamp())
-    )
-    top = ordered[:5]
-    items = [{
-        "title": a["title"], "url": a["link"], "source": a.get("source"),
-        "blurb": (a.get("summary") or "").strip(), "time_utc": a["published"].strftime("%H:%M")
-    } for a in top]
+    # Get lots, then filter/limit to 5 with SpaceX bias
+    all_items = fetch_rss_news()[:40]
+    fresh = [a for a in all_items if (now - a["published"]) <= timedelta(hours=24)]
 
-    msg = fmt_digest(now.strftime("%b %d, %Y"), items, tags=["Daily"], footer_x="https://x.com/RedHorizonHub")
-    if send_telegram_message(msg, disable_preview=True):
-        for a in top: seen[a["link"]] = True
-        save_json(SEEN_FILE, seen)
-        send_to_zapier({"text":"digest"})
-        return "ok"
-    return "no-post"
+    # bias: SpaceX/Starship first
+    spacexy = [a for a in fresh if any(k in (a["title"] + a["summary"]).lower()
+                                       for k in ["spacex","starship","falcon","elon","raptor","starbase"])]
+    others  = [a for a in fresh if a not in spacexy]
+    items = (spacexy[:3] + others[:5])[:5]
+
+    if not items:
+        print("[DIGEST] no-post")
+        return "no-post"
+
+    # rotate hashtags a bit (2–3 extra)
+    extra_tags = " ".join(sample(DEFAULT_TAGS, k=3))
+
+    # Top story image (if present)
+    top = items[0]
+    head = f"🚀 *Red Horizon Daily Digest — {now.strftime('%b %d, %Y')}*"
+    chunks = [head, ""]
+
+    for a in items:
+        clock = a["published"].strftime("%H:%M")
+        bullets = (
+            f"• *{a['title']}* — _{a['source']}_ · 🕒 {clock} UTC\n"
+            f"  _Quick read:_ {a['summary'][:220].rstrip()}…\n"
+            f"  ➡️ [Open]({a['link']})\n"
+        )
+        chunks.append(bullets)
+
+    chunks.append(f"Follow on X: @RedHorizonHub\n#Daily {extra_tags}")
+    msg = "\n".join(chunks)
+
+    # send: photo for top if available, then text
+    if top.get("image"):
+        if send_telegram_image(top["image"], head):
+            # send the text list as a second message (clean)
+            send_telegram_message("\n".join(chunks[2:]))  # skip duplicate header
+    else:
+        send_telegram_message(msg)
+
+    # mark seen and forward
+    for a in items:
+        seen_links[a["link"]] = True
+    save_json("data/seen_links.json", seen_links)
+    send_to_zapier({"text": msg})
+    return "ok"
+
 
 def run_daily_image():
     _ensure_files()
