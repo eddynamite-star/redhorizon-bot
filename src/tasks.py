@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from src.feeds import (
-    fetch_rss_news, fetch_images, fetch_launch_schedule,  # launch schedule via rocketlaunch.live RSS
+    fetch_rss_news, fetch_images,  # launch schedule via rocketlaunch.live RSS
     fetch_nitter_signals,
     BREAKING_WHITELIST, NEGATIVE_HINTS
 )
