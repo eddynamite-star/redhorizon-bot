@@ -51,6 +51,18 @@ KEYWORDS = ["spacex", "starship", "elon", "falcon", "raptor", "starbase", "mars"
 # --------------------------
 # Helpers
 # --------------------------
+import html, re
+
+def clean_summary(text: str) -> str:
+    if not text:
+        return ""
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Unescape HTML entities (&amp;, &#32;, etc.)
+    text = html.unescape(text)
+    # Collapse whitespace
+    return re.sub(r"\s+", " ", text).strip()
+
 def _host(url: str) -> str:
     try:
         return urlparse(url).netloc.lower()
