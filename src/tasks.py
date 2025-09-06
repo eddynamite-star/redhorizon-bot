@@ -415,147 +415,220 @@ def fetch_custom_blurb(meta: dict, kind: str) -> str:
 # Culture: Books, Games, Screen (Movies/TV/Docs)
 # ---------------------------
 
-def _load_or_default(path, default_list):
-    data = load_json(path, None)
-    return data if isinstance(data, list) and data else default_list
+# src/tasks.py
+import os
+import re
+import json
+import html
+import requests
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
-# Built-in fallbacks (kept empty; we rely on JSON files you provided)
-BOOKS_DEFAULT = []
-GAMES_DEFAULT = []
-SCREEN_DEFAULT = []
+from src.feeds import (
+    fetch_rss_news,                   # unchanged
+    fetch_images,                     # unchanged
+    extract_image_from_entry          # used in breaking (unchanged)
+)
 
-def run_book_spotlight():
-    books = _load_or_default("data/books.json", BOOKS_DEFAULT)
-    if not books:
-        return "No books"
-    idx_data = load_json("data/book_index.json", {"index": 0})
-    idx = int(idx_data.get("index", 0)) % len(books)
-    b = books[idx]
+# ---------- Simple JSON helpers ----------
 
-    title = md_escape(b.get("title", "Unknown Title"))
-    author = md_escape(b.get("author", "Unknown Author"))
-    cover = b.get("cover_image") or ""
-    review = b.get("review_link") or ""
-    wiki = b.get("wiki_link") or ""
+def _load_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return default
+    except Exception:
+        return default
 
-    blurb_raw = fetch_custom_blurb(b, "book")
-    blurb = md_escape(blurb_raw)
+def _save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    caption = (
-        f"📚 *Book Spotlight*\n"
-        f"_{title}_ — {author}\n\n"
-        f"{blurb}\n\n"
-        f"#Books #SciFi #Space #RedHorizon"
-    )
-    buttons = []
-    if review: buttons.append(("📖 Review", review))
-    if wiki:   buttons.append(("🌐 Wiki", wiki))
+# ---------- Telegram helpers ----------
 
-    image = cover or DEFAULT_CULTURE_IMAGE
-    ok = send_telegram_image(image, caption, buttons if buttons else None)
-    if not ok:
-        ok = send_telegram_message(caption, buttons if buttons else None)
+def _tg_send_message(text, buttons=None, disable_preview=False):
+    bot = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    url = f"https://api.telegram.org/bot{bot}/sendMessage"
+    payload = {
+        "chat_id": chat,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": disable_preview,
+    }
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": [buttons]}
+    r = requests.post(url, json=payload, timeout=15)
+    if r.status_code != 200:
+        raise RuntimeError(f"Telegram sendMessage failed: {r.text}")
+    return True
 
-    if ok:
-        idx_data["index"] = idx + 1
-        save_json("data/book_index.json", idx_data)
-        send_to_zapier({"text": f"Book: {b.get('title')} — {b.get('author')}"})
-        return "ok"
-    return "Failed"
+def _tg_send_photo(photo_url, caption, buttons=None):
+    bot = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    url = f"https://api.telegram.org/bot{bot}/sendPhoto"
+    payload = {
+        "chat_id": chat,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": [buttons]}
+    r = requests.post(url, json=payload, timeout=20)
+    if r.status_code != 200:
+        # fallback to text if photo fails
+        _tg_send_message(caption, buttons)
+    return True
 
-def run_game_spotlight():
-    games = _load_or_default("data/games.json", GAMES_DEFAULT)
-    if not games:
-        return "No games"
-    idx_data = load_json("data/game_index.json", {"index": 0})
-    idx = int(idx_data.get("index", 0)) % len(games)
-    g = games[idx]
+# ---------- Tiny HTML -> first sentences scraper (Wiki-safe) ----------
 
-    title = md_escape(g.get("title", "Unknown Game"))
-    cover = g.get("cover_image") or ""
-    site = g.get("official_site") or ""
-    trailer = g.get("trailer_link") or ""
+_PTAG = re.compile(r"<p[\s>].*?</p>", re.I | re.S)
+_TAGS = re.compile(r"<.*?>", re.S)
+_WS = re.compile(r"\s+")
 
-    blurb_raw = fetch_custom_blurb(g, "game")
-    blurb = md_escape(blurb_raw)
+def _first_sentences_from_wiki(url, max_sentences=2):
+    try:
+        if not url:
+            return ""
+        # Only attempt on wiki-ish domains
+        host = urlparse(url).netloc.lower()
+        if "wikipedia" not in host and "fandom" not in host and "wikidata" not in host and "wiki" not in host:
+            return ""
+        html_raw = requests.get(url, timeout=12).text
+        # Grab first <p> that has decent text
+        for m in _PTAG.finditer(html_raw):
+            txt = _TAGS.sub(" ", m.group())
+            txt = html.unescape(_WS.sub(" ", txt)).strip()
+            if len(txt) > 60:
+                # sentence split (naive)
+                parts = re.split(r"(?<=[.!?])\s+", txt)
+                out = " ".join(parts[:max_sentences]).strip()
+                return out
+        return ""
+    except Exception:
+        return ""
 
-    caption = (
-        f"🎮 *Game Spotlight*\n"
-        f"_{title}_\n\n"
-        f"{blurb}\n\n"
-        f"#Gaming #Space #Exploration #RedHorizon"
-    )
-    buttons = []
-    if site:    buttons.append(("🌐 Official Site", site))
-    if trailer: buttons.append(("▶ Trailer", trailer))
+# ---------- CULTURE SPOTLIGHT ----------
 
-    image = cover or DEFAULT_CULTURE_IMAGE
-    ok = send_telegram_image(image, caption, buttons if buttons else None)
-    if not ok:
-        ok = send_telegram_message(caption, buttons if buttons else None)
+DATA_DIR = "data"
+BOOKS_FILE  = os.path.join(DATA_DIR, "books.json")
+GAMES_FILE  = os.path.join(DATA_DIR, "games.json")
+MOVIES_FILE = os.path.join(DATA_DIR, "movies.json")
+STATE_FILE  = os.path.join(DATA_DIR, "culture_state.json")
 
-    if ok:
-        idx_data["index"] = idx + 1
-        save_json("data/game_index.json", idx_data)
-        send_to_zapier({"text": f"Game: {g.get('title')}"})
-        return "ok"
-    return "Failed"
+def _ensure_culture_state():
+    st = _load_json(STATE_FILE, {
+        "cycle": "book",   # book -> game -> movie -> book ...
+        "book_index": 0,
+        "game_index": 0,
+        "movie_index": 0
+    })
+    return st
 
-def run_movie_spotlight():
-    screen = _load_or_default("data/movies.json", SCREEN_DEFAULT)  # films/TV/docs
-    if not screen:
-        return "No screen items"
-    idx_data = load_json("data/movie_index.json", {"index": 0})
-    idx = int(idx_data.get("index", 0)) % len(screen)
-    m = screen[idx]
+def _advance_cycle(cycle):
+    return {"book":"game", "game":"movie", "movie":"book"}[cycle]
 
-    title = md_escape(m.get("title", "Unknown Title"))
-    kind  = md_escape(m.get("type", "Screen"))
-    year  = m.get("year", "")
-    cover = m.get("cover_image") or ""
-    trailer = m.get("trailer_link") or ""
-    wiki    = m.get("wiki_link") or ""
+def _sanitize(text):
+    return html.escape(text or "").replace("&amp;", "&")
 
-    blurb_raw = fetch_custom_blurb(m, "screen")
-    blurb = md_escape(blurb_raw)
-
-    head = f"🎬 *{kind} Spotlight*"
-    meta = f"_{title}_ ({year})" if year else f"_{title}_"
-    caption = f"{head}\n{meta}\n\n{blurb}\n\n#Movies #SciFi #Space #RedHorizon"
-
-    buttons = []
-    if trailer: buttons.append(("▶ Trailer", trailer))
-    if wiki:    buttons.append(("🌐 Wiki", wiki))
-
-    image = cover or DEFAULT_CULTURE_IMAGE
-    ok = send_telegram_image(image, caption, buttons if buttons else None)
-    if not ok:
-        ok = send_telegram_message(caption, buttons if buttons else None)
-
-    if ok:
-        idx_data["index"] = idx + 1
-        save_json("data/movie_index.json", idx_data)
-        send_to_zapier({"text": f"Screen: {m.get('title')} ({m.get('type')})"})
-        return "ok"
-    return "Failed"
-
-def run_culture_daily():
+def _blurb_for_item(item):
     """
-    Rotates daily between: book -> game -> screen.
-    Persists rotation in data/media_cycle.json.
+    Priority:
+      1) explicit blurb in JSON
+      2) wiki_link first paragraph (1–2 sentences)
+      3) summary in JSON
+      4) safe fallback
     """
-    order = ["book", "game", "screen"]
-    cycle = load_json("data/media_cycle.json", {"index": 0})
-    i = int(cycle.get("index", 0)) % len(order)
-    pick = order[i]
+    if item.get("blurb"):
+        return item["blurb"]
+    wiki = item.get("wiki_link") or item.get("review_link")
+    wiki_blurb = _first_sentences_from_wiki(wiki, max_sentences=2)
+    if wiki_blurb:
+        return wiki_blurb
+    if item.get("summary"):
+        return item["summary"]
+    # fallback
+    title = item.get("title", "This work")
+    return f"{title} is a standout entry in space culture—highly recommended for Red Horizon readers."
 
-    if pick == "book":
-        res = run_book_spotlight()
-    elif pick == "game":
-        res = run_game_spotlight()
+def _buttons_for_item(item, kind):
+    buttons = []
+    # prioritize 'review' + 'wiki' + 'official' + 'trailer'
+    if item.get("review_link"):
+        buttons.append({"text": "📖 Review", "url": item["review_link"]})
+    if item.get("wiki_link"):
+        buttons.append({"text": "🌐 Wiki", "url": item["wiki_link"]})
+    if kind in ("game", "movie") and item.get("official"):
+        buttons.append({"text": "🏷 Official", "url": item["official"]})
+    if kind in ("game", "movie") and item.get("trailer"):
+        buttons.append({"text": "🎬 Trailer", "url": item["trailer"]})
+    # format as Telegram inline row
+    return [[b for b in buttons]] if buttons else None
+
+def _hashtags_for(kind):
+    base = "#RedHorizon #Space"
+    if kind == "book":
+        return f"{base} #Books #SciFi"
+    if kind == "game":
+        return f"{base} #Gaming #SpaceGames"
+    return f"{base} #Films #TV #SpaceFilms"
+
+def run_culture_spotlight():
+    """
+    Rotates book → game → movie (persisted). You can override in the
+    workflow by setting env CULTURE_FORCE to 'book'|'game'|'movie'.
+    """
+    state = _ensure_culture_state()
+    force = (os.getenv("CULTURE_FORCE") or "").strip().lower()
+    cycle = force if force in ("book","game","movie") else state["cycle"]
+
+    if cycle == "book":
+        items = _load_json(BOOKS_FILE, [])
+        idx_key = "book_index"
+        icon = "📚"
+        title_line = "Book Spotlight"
+    elif cycle == "game":
+        items = _load_json(GAMES_FILE, [])
+        idx_key = "game_index"
+        icon = "🎮"
+        title_line = "Game Spotlight"
     else:
-        res = run_movie_spotlight()
+        items = _load_json(MOVIES_FILE, [])
+        idx_key = "movie_index"
+        icon = "🎬"
+        title_line = "Culture Spotlight"
 
-    cycle["index"] = i + 1
-    save_json("data/media_cycle.json", cycle)
-    return res or "ok"
+    if not items:
+        _tg_send_message("⚠️ Culture list is empty.")
+        return "empty"
+
+    i = state[idx_key] % len(items)
+    item = items[i]
+
+    title = _sanitize(item.get("title"))
+    author = _sanitize(item.get("author") or item.get("creator") or item.get("studio") or "")
+    blurb = _sanitize(_blurb_for_item(item))
+    hashtags = _hashtags_for("book" if cycle=="book" else ("game" if cycle=="game" else "movie"))
+    header = f"<b>{icon} {title_line}</b>\n<i>{title}</i>{(' — ' + author) if author else ''}\n\n{blurb}\n\n{hashtags}"
+
+    buttons = _buttons_for_item(item, cycle)
+
+    # Prefer cover image
+    cover = item.get("cover")
+    if cover:
+        _tg_send_photo(cover, header, buttons)
+    else:
+        _tg_send_message(header, buttons)
+
+    # advance & persist (unless forced)
+    if not force:
+        state[idx_key] = (state[idx_key] + 1) % len(items)
+        state["cycle"] = _advance_cycle(cycle)
+        _save_json(STATE_FILE, state)
+
+    return "ok"
+
+
