@@ -1,32 +1,266 @@
 [
-  {"title":"The Case for Mars","author":"Robert Zubrin","cover_image":"https://upload.wikimedia.org/wikipedia/en/1/13/The_Case_for_Mars_book_cover.jpg","review_link":"https://www.goodreads.com/book/show/56865.The_Case_for_Mars","wiki_link":"https://en.wikipedia.org/wiki/The_Case_for_Mars"},
-  {"title":"Mars Direct","author":"Robert Zubrin","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/23/Mars_Direct_book.jpg","review_link":"https://www.goodreads.com/book/show/158182.Mars_Direct","wiki_link":"https://en.wikipedia.org/wiki/Mars_Direct"},
-  {"title":"Packing for Mars","author":"Mary Roach","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/26/Packing_for_Mars.jpg","review_link":"https://www.goodreads.com/book/show/8035094-packing-for-mars","wiki_link":"https://en.wikipedia.org/wiki/Packing_for_Mars"},
-  {"title":"The Right Stuff","author":"Tom Wolfe","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/8c/The_Right_Stuff_%28book%29.jpg","review_link":"https://www.goodreads.com/book/show/586662.The_Right_Stuff","wiki_link":"https://en.wikipedia.org/wiki/The_Right_Stuff"},
-  {"title":"Failure Is Not an Option","author":"Gene Kranz","cover_image":"https://upload.wikimedia.org/wikipedia/en/3/32/Failure_Is_Not_an_Option.jpg","review_link":"https://www.goodreads.com/book/show/10858.Failure_Is_Not_an_Option","wiki_link":"https://en.wikipedia.org/wiki/Failure_Is_Not_an_Option"},
-  {"title":"Hidden Figures","author":"Margot Lee Shetterly","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/99/Hidden_Figures_%28book%29.jpg","review_link":"https://www.goodreads.com/book/show/25953369-hidden-figures","wiki_link":"https://en.wikipedia.org/wiki/Hidden_Figures"},
-  {"title":"Apollo 13","author":"James Lovell; Jeffrey Kluger","cover_image":"https://upload.wikimedia.org/wikipedia/en/5/58/Lost_Moon.jpg","review_link":"https://www.goodreads.com/book/show/49611.Lost_Moon","wiki_link":"https://en.wikipedia.org/wiki/Lost_Moon"},
-  {"title":"An Astronaut’s Guide to Life on Earth","author":"Chris Hadfield","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/8c/An_Astronaut%27s_Guide_to_Life_on_Earth.jpg","review_link":"https://www.goodreads.com/book/show/17675009-an-astronaut-s-guide-to-life-on-earth","wiki_link":"https://en.wikipedia.org/wiki/An_Astronaut%27s_Guide_to_Life_on_Earth"},
-  {"title":"Endurance: A Year in Space, a Lifetime of Discovery","author":"Scott Kelly","cover_image":"https://upload.wikimedia.org/wikipedia/en/f/f3/Endurance_by_Scott_Kelly.jpg","review_link":"https://www.goodreads.com/book/show/34311472-endurance","wiki_link":"https://en.wikipedia.org/wiki/Scott_Kelly_(astronaut)#Memoir"},
-  {"title":"Spaceman","author":"Mike Massimino","cover_image":"https://upload.wikimedia.org/wikipedia/en/6/64/Spaceman_Massimino.jpg","review_link":"https://www.goodreads.com/book/show/28439264-spaceman","wiki_link":"https://en.wikipedia.org/wiki/Michael_Massimino"},
-  {"title":"Carrying the Fire","author":"Michael Collins","cover_image":"https://upload.wikimedia.org/wikipedia/en/7/7a/Carrying_the_Fire_cover.jpg","review_link":"https://www.goodreads.com/book/show/126190.Carrying_the_Fire","wiki_link":"https://en.wikipedia.org/wiki/Carrying_the_Fire"},
-  {"title":"Chasing New Horizons","author":"Alan Stern; David Grinspoon","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/9a/Chasing_New_Horizons_book.jpg","review_link":"https://www.goodreads.com/book/show/36644522-chasing-new-horizons","wiki_link":"https://en.wikipedia.org/wiki/New_Horizons#Books"},
-  {"title":"Liftoff","author":"Eric Berger","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/88/Liftoff_Eric_Berger.jpg","review_link":"https://www.goodreads.com/book/show/54435659-liftoff","wiki_link":"https://en.wikipedia.org/wiki/SpaceX#Further_reading"},
-  {"title":"Space Chronicles","author":"Neil deGrasse Tyson","cover_image":"https://upload.wikimedia.org/wikipedia/en/3/35/Space_Chronicles.jpg","review_link":"https://www.goodreads.com/book/show/11797368-space-chronicles","wiki_link":"https://en.wikipedia.org/wiki/Neil_deGrasse_Tyson_bibliography"},
-  {"title":"Astrophysics for People in a Hurry","author":"Neil deGrasse Tyson","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/28/Astrophysics_for_People_in_a_Hurry.png","review_link":"https://www.goodreads.com/book/show/32191710-astrophysics-for-people-in-a-hurry","wiki_link":"https://en.wikipedia.org/wiki/Astrophysics_for_People_in_a_Hurry"},
-  {"title":"The Martian","author":"Andy Weir","cover_image":"https://upload.wikimedia.org/wikipedia/en/c/c3/The_Martian_2014.jpg","review_link":"https://www.goodreads.com/book/show/18007564-the-martian","wiki_link":"https://en.wikipedia.org/wiki/The_Martian_(Weir_novel)"},
-  {"title":"Project Hail Mary","author":"Andy Weir","cover_image":"https://upload.wikimedia.org/wikipedia/en/1/1f/Project_Hail_Mary_%28book%29.png","review_link":"https://www.goodreads.com/book/show/54493401-project-hail-mary","wiki_link":"https://en.wikipedia.org/wiki/Project_Hail_Mary"},
-  {"title":"Artemis","author":"Andy Weir","cover_image":"https://upload.wikimedia.org/wikipedia/en/4/4e/Artemis_Andy_Weir_novel.jpg","review_link":"https://www.goodreads.com/book/show/34928122-artemis","wiki_link":"https://en.wikipedia.org/wiki/Artemis_(novel)"},
-  {"title":"Red Mars","author":"Kim Stanley Robinson","cover_image":"https://upload.wikimedia.org/wikipedia/en/c/c9/Red_Mars_1993.jpg","review_link":"https://www.goodreads.com/book/show/77507.Red_Mars","wiki_link":"https://en.wikipedia.org/wiki/Red_Mars"},
-  {"title":"Green Mars","author":"Kim Stanley Robinson","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/9f/Green_Mars_1994.jpg","review_link":"https://www.goodreads.com/book/show/77508.Green_Mars","wiki_link":"https://en.wikipedia.org/wiki/Green_Mars"},
-  {"title":"Blue Mars","author":"Kim Stanley Robinson","cover_image":"https://upload.wikimedia.org/wikipedia/en/b/bc/Blue_Mars_1996.jpg","review_link":"https://www.goodreads.com/book/show/77509.Blue_Mars","wiki_link":"https://en.wikipedia.org/wiki/Blue_Mars"},
-  {"title":"2312","author":"Kim Stanley Robinson","cover_image":"https://upload.wikimedia.org/wikipedia/en/3/3f/2312_%28novel%29.jpg","review_link":"https://www.goodreads.com/book/show/12888761-2312","wiki_link":"https://en.wikipedia.org/wiki/2312_(novel)"},
-  {"title":"Aurora","author":"Kim Stanley Robinson","cover_image":"https://upload.wikimedia.org/wikipedia/en/7/74/Aurora_%28novel%29.jpg","review_link":"https://www.goodreads.com/book/show/23197269-aurora","wiki_link":"https://en.wikipedia.org/wiki/Aurora_(novel)"},
-  {"title":"Foundation","author":"Isaac Asimov","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/25/Foundation_gnome.jpg","review_link":"https://www.goodreads.com/book/show/29579.Foundation","wiki_link":"https://en.wikipedia.org/wiki/Foundation_series"},
-  {"title":"I, Robot","author":"Isaac Asimov","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/8e/I_Robot_-_Runaround_%28cover%29.jpg","review_link":"https://www.goodreads.com/book/show/41804.I_Robot","wiki_link":"https://en.wikipedia.org/wiki/I,_Robot"},
-  {"title":"Rendezvous with Rama","author":"Arthur C. Clarke","cover_image":"https://upload.wikimedia.org/wikipedia/en/7/77/Rama_Arthur_C._Clarke.jpg","review_link":"https://www.goodreads.com/book/show/112537.Rendezvous_with_Rama","wiki_link":"https://en.wikipedia.org/wiki/Rendezvous_with_Rama"},
-  {"title":"2001: A Space Odyssey","author":"Arthur C. Clarke","cover_image":"https://upload.wikimedia.org/wikipedia/en/4/4e/2001ASpaceOdyssey-clarke.jpg","review_link":"https://www.goodreads.com/book/show/70535.2001","wiki_link":"https://en.wikipedia.org/wiki/2001:_A_Space_Odyssey_(novel)"},
-  {"title":"Childhood’s End","author":"Arthur C. Clarke","cover_image":"https://upload.wikimedia.org/wikipedia/en/a/a1/Childhood%27sEnd%281953%29.jpg","review_link":"https://www.goodreads.com/book/show/414999.Childhood_s_End","wiki_link":"https://en.wikipedia.org/wiki/Childhood%27s_End"},
-  {"title":"Dune","author":"Frank Herbert","cover_image":"https://upload.wikimedia.org/wikipedia/en/5/51/Dune_first_edition.jpg","review_link":"https://www.goodreads.com/book/show/44767458-dune","wiki_link":"https://en.wikipedia.org/wiki/Dune_(novel)"},
-  {"title":"Hyperion","author":"Dan Simmons","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/29/Hyperion_cover.jpg","review_link":"https://www.goodreads.com/book/show/77566.Hyperion","wiki_link":"https://en.wikipedia.org/wiki/Hyperion_(Simmons_novel)"}
+  {
+    "title": "The Case for Mars",
+    "author": "Robert Zubrin",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/39/The_Case_for_Mars_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/The_Case_for_Mars",
+    "review_link": "https://www.goodreads.com/book/show/40098.The_Case_for_Mars",
+    "summary": "Zubrin lays out an aggressive but achievable plan to land humans on Mars using in-situ resource utilization.",
+    "blurb": "Zubrin’s manifesto argues Mars is within reach—technically, financially, and morally—if we use Martian resources to live off the land. It’s an energizing blueprint that helped define the modern Mars movement."
+  },
+  {
+    "title": "Mars Direct",
+    "author": "Robert Zubrin",
+    "cover": "https://upload.wikimedia.org/wikipedia/commons/1/15/Mars_Direct_diagram.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Mars_Direct",
+    "review_link": "https://www.goodreads.com/book/show/178622.Mars_Direct",
+    "summary": "A mission architecture that minimizes cost by producing propellant on Mars.",
+    "blurb": "A concise exposition of the Mars Direct architecture: launch less, live local, and come home on propellant you make on Mars. It’s the engineering backbone behind many modern proposals."
+  },
+  {
+    "title": "Packing for Mars",
+    "author": "Mary Roach",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/93/Packing_for_Mars.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Packing_for_Mars",
+    "review_link": "https://www.goodreads.com/book/show/8113920-packing-for-mars",
+    "summary": "A humorous, honest look at the bizarre realities of human spaceflight.",
+    "blurb": "Mary Roach explores the messy, awkward, and hilarious realities behind making humans space-ready. It’s science told with irresistible curiosity and wit."
+  },
+  {
+    "title": "The Right Stuff",
+    "author": "Tom Wolfe",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/34/The_Right_Stuff_%28book_cover%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/The_Right_Stuff_(book)",
+    "review_link": "https://www.goodreads.com/book/show/817.The_Right_Stuff",
+    "summary": "A literary chronicle of test pilots and the Mercury Seven astronauts.",
+    "blurb": "Wolfe’s electric prose captures the bravado and fear of the pioneers who strapped themselves to the unknown. It’s the human story behind the engineering miracle."
+  },
+  {
+    "title": "Failure Is Not an Option",
+    "author": "Gene Kranz",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/0a/Failure_Is_Not_an_Option.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Failure_Is_Not_an_Option",
+    "review_link": "https://www.goodreads.com/book/show/11017.Failure_Is_Not_an_Option",
+    "summary": "NASA flight director Gene Kranz recounts crises and triumphs from Mercury to Apollo.",
+    "blurb": "From the launch room to Apollo 13, Kranz gives a gripping, disciplined view of mission control. It’s leadership, systems thinking, and cool under fire."
+  },
+  {
+    "title": "Hidden Figures",
+    "author": "Margot Lee Shetterly",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/3f/Hidden_Figures_book.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Hidden_Figures",
+    "review_link": "https://www.goodreads.com/book/show/25953369-hidden-figures",
+    "summary": "The untold story of Black women mathematicians who powered NASA.",
+    "blurb": "Shetterly restores long-overlooked brilliance to the center of space history. It’s inspiring social history and a celebration of problem-solvers."
+  },
+  {
+    "title": "Apollo 13",
+    "author": "Jeffrey Kluger and James Lovell",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/6/6d/Apollo_13_book_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Lost_Moon",
+    "review_link": "https://www.goodreads.com/book/show/10183.Lost_Moon",
+    "summary": "The inside story of the near-catastrophic Apollo 13 mission.",
+    "blurb": "A taut retelling of ingenuity under pressure, co-written by the mission commander himself. Edge-of-seat engineering drama."
+  },
+  {
+    "title": "An Astronaut’s Guide to Life on Earth",
+    "author": "Chris Hadfield",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/8/82/An_Astronaut%27s_Guide_to_Life_on_Earth.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/An_Astronaut%27s_Guide_to_Life_on_Earth",
+    "review_link": "https://www.goodreads.com/book/show/18170143-an-astronaut-s-guide-to-life-on-earth",
+    "summary": "Lessons on excellence and humility from a veteran astronaut.",
+    "blurb": "Hadfield blends space stories with grounded life advice: sweat the small stuff, rehearse the worst, and be a great crewmate."
+  },
+  {
+    "title": "Endurance",
+    "author": "Scott Kelly",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/9d/Endurance_Scott_Kelly.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Endurance_(Kelly_book)",
+    "review_link": "https://www.goodreads.com/book/show/34310894-endurance",
+    "summary": "A memoir of a year in space and a lifetime preparing for it.",
+    "blurb": "Kelly captures the grind and wonder of long-duration spaceflight—body, mind, and family stretched across orbits."
+  },
+  {
+    "title": "Spaceman",
+    "author": "Mike Massimino",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/0e/Spaceman_Massimino.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Mike_Massimino#Books",
+    "review_link": "https://www.goodreads.com/book/show/28693023-spaceman",
+    "summary": "A candid astronaut memoir from a Hubble repairman.",
+    "blurb": "Funny, heartfelt, and blue-collar determined—Massimino shows how persistence can take you from Queens to the Hubble."
+  },
+  {
+    "title": "Carrying the Fire",
+    "author": "Michael Collins",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/00/Carrying_the_Fire.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Carrying_the_Fire",
+    "review_link": "https://www.goodreads.com/book/show/58618.Carrying_the_Fire",
+    "summary": "Apollo 11’s command module pilot reflects with elegance and humor.",
+    "blurb": "Often called the finest astronaut memoir, Collins writes with lyric clarity about isolation, teamwork, and the Moon’s pull."
+  },
+  {
+    "title": "Chasing New Horizons",
+    "author": "Alan Stern and David Grinspoon",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/0a/Chasing_New_Horizons_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Chasing_New_Horizons",
+    "review_link": "https://www.goodreads.com/book/show/36373325-chasing-new-horizons",
+    "summary": "The improbable, thrilling journey to Pluto with New Horizons.",
+    "blurb": "A mission that almost wasn’t—and then rewrote textbooks. Politics, perseverance, and a breathtaking flyby."
+  },
+  {
+    "title": "Liftoff",
+    "author": "Eric Berger",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/91/Liftoff_Berger.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Liftoff_(book)",
+    "review_link": "https://www.goodreads.com/book/show/55360246-liftoff",
+    "summary": "Inside the chaotic early years of SpaceX.",
+    "blurb": "Berger chronicles audacious bets, near-bankruptcy, and the stubborn culture that birthed Falcon 1—and everything after."
+  },
+  {
+    "title": "Space Chronicles",
+    "author": "Neil deGrasse Tyson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/98/Space_Chronicles_Tyson.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Space_Chronicles",
+    "review_link": "https://www.goodreads.com/book/show/12609478-space-chronicles",
+    "summary": "Essays on why space exploration matters to society.",
+    "blurb": "Tyson’s case is clear: exploration drives economy, inspiration, and national identity. An accessible policy primer."
+  },
+  {
+    "title": "Astrophysics for People in a Hurry",
+    "author": "Neil deGrasse Tyson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/4/4d/Astrophysics_for_People_in_a_Hurry.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Astrophysics_for_People_in_a_Hurry",
+    "review_link": "https://www.goodreads.com/book/show/32191710-astrophysics-for-people-in-a-hurry",
+    "summary": "Bite-size explanations of the cosmos.",
+    "blurb": "A pocket tour of the universe—crisp, witty, and perfect for commute-length brain snacks."
+  },
+
+  /* --- Fiction (Weir, KSR, Asimov, Clarke, etc.) --- */
+
+  {
+    "title": "The Martian",
+    "author": "Andy Weir",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/c/c3/The_Martian_2011.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/The_Martian_(Weir_novel)",
+    "review_link": "https://www.goodreads.com/book/show/18007564-the-martian",
+    "summary": "A stranded astronaut survives on Mars using ingenuity and grit.",
+    "blurb": "Science puzzle-box meets survival thriller—Weir makes orbital mechanics feel like a page-turner."
+  },
+  {
+    "title": "Project Hail Mary",
+    "author": "Andy Weir",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/0f/Project_Hail_Mary_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Project_Hail_Mary",
+    "review_link": "https://www.goodreads.com/book/show/54493401-project-hail-mary",
+    "summary": "One man must save Earth with an unlikely ally.",
+    "blurb": "Clever, funny, and full of delightful problem-solving—Weir’s best since The Martian."
+  },
+  {
+    "title": "Artemis",
+    "author": "Andy Weir",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/3c/Artemis_novel_cover.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Artemis_(novel)",
+    "review_link": "https://www.goodreads.com/book/show/34928122-artemis",
+    "summary": "A caper set in the first city on the Moon.",
+    "blurb": "Lunar noir with heists, welders, and vacuum. A breezy tour of a plausible Moon economy."
+  },
+  {
+    "title": "Red Mars",
+    "author": "Kim Stanley Robinson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/2/25/Red_Mars_%28book%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Red_Mars",
+    "review_link": "https://www.goodreads.com/book/show/77507.Red_Mars",
+    "summary": "The first 100 colonists seed a new world and new politics.",
+    "blurb": "Hard science meets sweeping politics; the most influential Mars novel of the modern era."
+  },
+  {
+    "title": "Green Mars",
+    "author": "Kim Stanley Robinson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/8/8b/Green_Mars_%28book%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Green_Mars",
+    "review_link": "https://www.goodreads.com/book/show/77508.Green_Mars",
+    "summary": "Terraforming accelerates; resistance grows.",
+    "blurb": "Vast landscapes, evolving ecologies, and the politics of who Mars is for."
+  },
+  {
+    "title": "Blue Mars",
+    "author": "Kim Stanley Robinson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/c/cf/Blue_Mars_%28book%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Blue_Mars",
+    "review_link": "https://www.goodreads.com/book/show/77509.Blue_Mars",
+    "summary": "A matured Mars wrestles with identity and interplanetary ties.",
+    "blurb": "The trilogy’s thoughtful finale—ecology, culture, and the long view of civilization."
+  },
+  {
+    "title": "2312",
+    "author": "Kim Stanley Robinson",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/f/f3/2312_%28novel%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/2312_(novel)",
+    "review_link": "https://www.goodreads.com/book/show/11830394-2312",
+    "summary": "A solar-system tour of art, politics, and engineered worlds.",
+    "blurb": "Dazzling world-building; a postcard collection from a future we might actually build."
+  },
+  {
+    "title": "Foundation",
+    "author": "Isaac Asimov",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/2/25/Foundation_gnome.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Foundation_series",
+    "review_link": "https://www.goodreads.com/book/show/29579.Foundation",
+    "summary": "Psychohistory forecasts the fall of empire—and a plan to shorten the dark age.",
+    "blurb": "A big-ideas classic: politics, science, and the mathematics of history."
+  },
+  {
+    "title": "I, Robot",
+    "author": "Isaac Asimov",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/8/8e/I%2C_Robot_%28short_story_collection%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/I,_Robot",
+    "review_link": "https://www.goodreads.com/book/show/41804.I_Robot",
+    "summary": "Stories exploring the Three Laws and human-machine ethics.",
+    "blurb": "Philosophical puzzles wrapped in humane storytelling—still shaping AI debates today."
+  },
+  {
+    "title": "Rendezvous with Rama",
+    "author": "Arthur C. Clarke",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/05/Rama_first.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Rendezvous_with_Rama",
+    "review_link": "https://www.goodreads.com/book/show/112537.Rendezvous_with_Rama",
+    "summary": "An alien starship passes through the solar system; we dare to enter.",
+    "blurb": "A cathedral of hard-SF sense-of-wonder—spacious, eerie, and unforgettable."
+  },
+  {
+    "title": "2001: A Space Odyssey",
+    "author": "Arthur C. Clarke",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/4/4f/2001ASpaceOdyssey.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/2001:_A_Space_Odyssey_(novel)",
+    "review_link": "https://www.goodreads.com/book/show/70535.2001",
+    "summary": "Humanity’s leap forward is nudged by inscrutable intelligence.",
+    "blurb": "Cosmic mystery meets evolutionary meditation; an enduring pillar of space lit."
+  },
+  {
+    "title": "Childhood’s End",
+    "author": "Arthur C. Clarke",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/39/ChildhoodsEnd%281stEd%29.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Childhood%27s_End",
+    "review_link": "https://www.goodreads.com/book/show/414999.Childhood_s_End",
+    "summary": "Benevolent overlords, transcendent destiny, and a bittersweet farewell.",
+    "blurb": "Melancholy and majestic—Clarke at his most haunting."
+  },
+  {
+    "title": "Dune",
+    "author": "Frank Herbert",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/5/51/Dune_first_edition.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Dune_(novel)",
+    "review_link": "https://www.goodreads.com/book/show/44767458-dune",
+    "summary": "Politics, ecology, and prophecy on a desert world.",
+    "blurb": "A universe of power and environment—the rare epic that rewards every re-read."
+  },
+  {
+    "title": "Hyperion",
+    "author": "Dan Simmons",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/b/b9/Hyperion_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Hyperion_(Simmons_novel)",
+    "review_link": "https://www.goodreads.com/book/show/77566.Hyperion",
+    "summary": "Pilgrims tell their stories en route to a terrifying shrine.",
+    "blurb": "Canterbury Tales in space—lush, literary, and spine-tingling."
+  }
 ]
