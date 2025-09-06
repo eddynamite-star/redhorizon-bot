@@ -1,318 +1,333 @@
 # src/feeds.py
-
 import feedparser
 import requests
-import time
 import re
-import html
-from urllib.parse import urlparse, urlunparse
 from datetime import datetime, timedelta
+from urllib.parse import urlparse, urljoin
 
-# ------------- CONFIG -------------
+# -----------------------------
+# CONFIG: Feeds & simple tags
+# -----------------------------
 
-# High-quality space news feeds (RSS-friendly)
+# Core news feeds (English-first, high-signal)
 NEWS_FEEDS = [
-    # Official / Agencies
+    # Official / agencies
     "https://www.nasa.gov/rss/dyn/breaking_news.rss",
-    "https://www.nasa.gov/rss/dyn/mission_pages.rss",
     "https://science.nasa.gov/feed/",
     "https://mars.nasa.gov/rss/news/",
     "https://www.esa.int/rssfeed/Our_Activities/Space_News",
-    "https://www.jaxa.jp/rss/jaxa_e.xml",  # JAXA English
     "https://www.blueorigin.com/rss/",
-
-    # Major outlets
-    "https://www.space.com/feeds/all",
+    # Industry / media
     "https://spacenews.com/feed/",
+    "https://www.space.com/feeds/all",
     "https://www.spaceflightnow.com/feed/",
-    "https://www.universetoday.com/feed/",
-    "https://phys.org/rss-feed/space-news/",
-    "https://www.planetary.org/planetary-insider/rss.xml",  # Planetary Society
-    "https://www.spacepolicyonline.com/feed/",
-    "https://www.skyatnightmagazine.com/feed/",  # Sky & Telescope (BBC S@N)
-    "https://astronomynow.com/feed/",
-    "https://www.npr.org/sections/space/rss.xml",
-    "https://www.sciencedaily.com/rss/space_time.xml",
-    "https://www.spacedaily.com/index.html?section=atom",
-    "https://www.orbitaltoday.com/feed/",
-    "https://www.nasawatch.com/feed/",
-    "https://www.astrobio.net/feed/",
-    "https://www.centaurea.org/feed",  # Centauri Dreams (sometimes /feed/ works)
-    "https://www.thespacereview.com/rss/rss.xml",
-    "https://www.spaceref.com/feed/",
-    "https://www.spacedotcom.com/feeds/topic/mars.xml",  # Mars topic
-    "https://www.spaceq.ca/feed/",  # Space Q (Canada)
-    "https://earthsky.org/space/feed/",
-    "https://www.newscientist.com/subject/space/feed/",  # may be partial/paywalled
-    "https://www.nssdca.gsfc.nasa.gov/nssdca_news/rss.xml",  # NASA NSSDCA news
-
-    # SpaceX-focused/adjacent
     "https://www.nasaspaceflight.com/feed/",
     "https://everydayastronaut.com/feed/",
-    "https://www.teslarati.com/category/space/feed/",
-    "https://www.teslarati.com/category/spacex/feed/",
-    "https://www.reddit.com/r/spacex.rss",  # Reddit (cap in tasks.py)
+    "https://www.universetoday.com/feed/",
+    "https://phys.org/rss-feed/space-news/",
+    "https://www.planetary.org/articles/feed",         # Planetary Society
+    "https://www.thespacereview.com/rss.xml",
+    "https://www.orbitaltoday.com/feed/",
+    "https://astronomy.com/feed",
+    "https://www.skyatnightmagazine.com/feed/",
+    "https://www.sciencedaily.com/rss/space_time.xml",
+    # NASA/JPL mission blogs (good images + context)
+    "https://www.jpl.nasa.gov/multimedia/rss/news",
 ]
 
-# Image-heavy feeds (for Image of the Day)
+# Image-heavy feeds (NASA IOTD, APOD mirror-like, Flickr sources)
 IMAGE_FEEDS = [
     "https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss",
-    "https://apod.nasa.gov/apod.rss",  # APOD
+    "https://www.nasa.gov/rss/dyn/chandra_images.rss",
     "https://mars.nasa.gov/rss/news/images/",
-    # SpaceX Flickr public feed (crew/Starship images sometimes show up)
-    "https://www.flickr.com/services/feeds/photos_public.gne?id=130608600@N05&lang=en-us&format=rss_200",
-    # NASA HQ Photo Flickr
-    "https://www.flickr.com/services/feeds/photos_public.gne?id=24662369@N07&lang=en-us&format=rss_200",
+    # SpaceX Flickr (public feed)
+    "https://www.flickr.com/services/feeds/photos_public.gne?id=130608600@N05&format=rss_200",
 ]
 
-# Nitter feeds for influential X/Twitter accounts (digest-only; avoid for breaking)
-# NOTE: Nitter instances can rate-limit. The default nitter.net sometimes throttles.
-# If reliability issues appear, swap domain to a known live mirror.
-NITTER_FEEDS = [
-    "https://nitter.net/elonmusk/rss",
-    "https://nitter.net/SpaceX/rss",
-    "https://nitter.net/NASASpaceflight/rss",
-    "https://nitter.net/Erdayastronaut/rss",     # Tim Dodd
-    "https://nitter.net/SciGuySpace/rss",        # Eric Berger
-    "https://nitter.net/lorengrush/rss",
-    "https://nitter.net/FraserCain/rss",
-    "https://nitter.net/starhopperrss/rss",      # NSF Starbase updates (if active)
-    "https://nitter.net/planetarysociety/rss",
-    "https://nitter.net/NASA/rss",
+# X/Twitter influencers via Nitter (public RSS)
+NITTER_HANDLES = [
+    "Erdayastronaut", "SciGuySpace", "LorenGrush", "NASASpaceflight",
+    "planetarysociety", "ThePlanetaryGuy", "FraserCain", "BadAstronomer",
 ]
+NITTER_FEEDS = [f"https://nitter.net/{h}/rss" for h in NITTER_HANDLES]
 
-# Default hashtags pool (used to rotate a few in tasks)
-DEFAULT_TAGS = [
-    "#Space", "#Mars", "#SpaceX", "#Starship",
-    "#Astronomy", "#Exploration", "#Science", "#RedHorizon"
-]
-
-# Keywords for relevance scoring
-KEYWORDS_PRIMARY = [
-    # SpaceX / Starship
-    "spacex", "starship", "super heavy", "falcon 9", "falcon-9", "falcon9",
-    "raptor", "starbase", "boca chica", "mechazilla", "chopsticks", "orbital",
-    "dragon", "crew dragon", "cargo dragon",
-    # Missions / Mars
-    "mars", "terraform", "habitability", "isru", "mars sample return",
-    # Agencies / programs
-    "nasa", "esa", "jaxa", "jwst", "webb", "orion", "sls", "iss", "gateway",
-    # Industry
-    "ula", "vulcan", "tory bruno", "rocket lab", "electron", "neutron",
-    "blue origin", "new shepard", "new glenn", "booster", "launch",
-]
-
-# Hints to down-rank or skip (repetitive dramas/headlines)
+# Negative hints to suppress tired/duplicate meme stories
 NEGATIVE_HINTS = [
-    "turtles", "nudists", "tourism complaints", "viral meme",
+    "turtles and the nudists", "nudists will have to migrate", "little red dots",
 ]
 
-# Per-feed fetch cap (avoid memory bloat)
-PER_FEED_LIMIT = 8
+# Scoring keywords
+SPACE_X_KEYWORDS = [
+    "spacex","starship","starbase","boca chica","falcon 9","falcon9","falcon-9",
+    "falcon heavy","raptor","merlin","dragon","crew dragon","cargo dragon","mechazilla",
+    "boostback","hot stage","super heavy","elon",
+]
+GENERAL_KEYWORDS = [
+    "nasa","esa","jaxa","isro","space","mars","moon","lunar","iss","jwst","hubble",
+    "orion","sls","launch","payload","booster","rocket","satellite","probe","lander",
+    "asteroid","comet","planet","exoplanet","astronomy","observatory","cosmic",
+]
+KEYWORDS = SPACE_X_KEYWORDS + GENERAL_KEYWORDS
 
-# ------------- HELPERS -------------
+# Hashtag pool used by tasks.py (sampled)
+DEFAULT_TAGS = [
+    "#Space", "#Mars", "#SpaceX", "#Starship", "#RedHorizon",
+    "#Astronomy", "#NASA", "#ESA", "#JWST", "#Launch",
+]
 
-def canonical_url(url: str) -> str:
+# Limits / windows
+MAX_PER_FEED = 8
+FRESH_NEWS_HOURS = 72          # we’ll filter again per task
+BREAKING_MINUTES = 15
+SUPER_BREAKING_MINUTES = 5
+
+HTTP_HEADERS = {"User-Agent": "RedHorizonBot/1.0 (+https://t.me/RedHorizonHub)"}
+
+# -----------------------------
+# Utilities
+# -----------------------------
+
+def _now_utc():
+    return datetime.utcnow()
+
+def _to_datetime(struct_time):
+    # feedparser returns time.struct_time; guard if missing
     try:
-        p = urlparse(url)
-        # strip tracking params very lightly
-        clean = p._replace(query=re.sub(r"(utm_[^&]+|utm|ref|ref_src)=[^&]+&?", "", p.query))
-        return urlunparse(clean)
-    except Exception:
-        return url
-
-def host_of(url: str) -> str:
-    try:
-        return urlparse(url).netloc.lower()
-    except Exception:
-        return ""
-
-def clean_summary(text: str) -> str:
-    """Strip HTML tags, unescape entities, collapse whitespace."""
-    if not text:
-        return ""
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-def is_english(text: str) -> bool:
-    """Very light language heuristic: mostly ASCII & common punctuation."""
-    if not text:
-        return True
-    # allow em dash etc.; reject when too many non-latin letters
-    non_basic = sum(1 for c in text if ord(c) > 127 and c not in "–—’“”")
-    return non_basic < max(8, len(text) // 20)
-
-def has_negative_hint(title: str) -> bool:
-    t = (title or "").lower()
-    return any(h in t for h in NEGATIVE_HINTS)
-
-def score_article(title: str, summary: str) -> int:
-    """Keyword scoring; primary keywords give points, title hits are heavier."""
-    score = 0
-    t = (title or "").lower()
-    s = (summary or "").lower()
-    for k in KEYWORDS_PRIMARY:
-        if k in t:
-            score += 2
-        if k in s:
-            score += 1
-    # small boost for obvious SpaceX/Mars
-    if any(k in t for k in ["spacex", "starship", "mars", "falcon"]):
-        score += 2
-    # slight penalty for negative topics
-    if has_negative_hint(title):
-        score -= 2
-    return score
-
-def extract_image(entry) -> str:
-    """Try to pull an image URL from common places."""
-    # media:content / media_thumbnail
-    for key in ("media_content", "media_thumbnail", "links", "enclosures"):
-        obj = getattr(entry, key, None)
-        if not obj:
-            continue
-        if isinstance(obj, list):
-            for it in obj:
-                url = it.get("url") if isinstance(it, dict) else it.get("href") if isinstance(it, dict) else None
-                if url and url.startswith("http"):
-                    return url
-        elif isinstance(obj, dict):
-            url = obj.get("url") or obj.get("href")
-            if url and url.startswith("http"):
-                return url
-    # summary img tag
-    summary = getattr(entry, "summary", "") or ""
-    m = re.search(r'src=["\'](http[^"\']+\.(jpg|jpeg|png|gif|webp)[^"\']*)["\']', summary, re.I)
-    if m:
-        return m.group(1)
-    return ""
-
-def parse_datetime_struct(ts):
-    try:
-        return datetime(*ts[:6])
+        return datetime(*struct_time[:6])
     except Exception:
         return None
 
-# ------------- FETCHERS -------------
-
-def _pull_feed(url):
-    """Wrapper to fetch/parse a feed with tiny retry for flaky endpoints."""
-    for i in range(2):
+def _source_name(feed, fallback):
+    try:
+        return feed.feed.title.strip()
+    except Exception:
         try:
-            return feedparser.parse(url)
+            host = urlparse(fallback).netloc
+            return host.replace("www.", "")
         except Exception:
-            time.sleep(0.8)
-    return feedparser.parse(url)  # best effort
+            return "source"
 
-def _collect_from_feeds(feed_urls, max_per_feed=PER_FEED_LIMIT):
-    """Yield normalized entries from a list of feeds."""
+def _host(url):
+    try:
+        return urlparse(url).netloc.lower().replace("www.", "")
+    except Exception:
+        return ""
+
+def _is_english(text: str) -> bool:
+    """Ultra-light language heuristic: ascii ratio + stopword hit."""
+    if not text:
+        return True
+    ascii_ratio = sum(c < '\x80' for c in text) / max(1, len(text))
+    if ascii_ratio < 0.85:
+        return False
+    lowers = text.lower()
+    hits = 0
+    for w in (" the ", " and ", " for ", " with ", " to ", " of ", " in "):
+        if w in lowers:
+            hits += 1
+    return hits >= 1
+
+def _score(title: str, summary: str) -> int:
+    t = (title or "").lower()
+    s = (summary or "").lower()
+    sc = 0
+    for k in KEYWORDS:
+        if k in t:
+            sc += 2 if k in ("starship","spacex","falcon 9","super heavy") else 1
+        if k in s:
+            sc += 1
+    # spaceX bias
+    if any(k in t+s for k in SPACE_X_KEYWORDS):
+        sc += 2
+    return sc
+
+IMG_TAG = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.I)
+OG_IMAGE = re.compile(r'"og:image"\s*content=["\']([^"\']+)["\']', re.I)
+
+def extract_image_from_entry(entry, base_link=None):
+    """
+    Best-effort image discovery:
+      1) media_content / media_thumbnail
+      2) <img src> in summary/content
+      3) OpenGraph og:image (single GET, optional)
+    """
+    # 1) media content
+    media = getattr(entry, "media_content", None) or []
+    if media:
+        for m in media:
+            u = m.get("url")
+            if u: return u
+
+    thumbs = getattr(entry, "media_thumbnail", None) or []
+    if thumbs:
+        for m in thumbs:
+            u = m.get("url")
+            if u: return u
+
+    # 2) inline img tags
+    for field in ("summary", "content"):
+        raw = getattr(entry, field, None)
+        if isinstance(raw, list) and raw:
+            raw = raw[0].get("value")
+        if not raw:
+            continue
+        m = IMG_TAG.search(raw)
+        if m:
+            u = m.group(1)
+            if base_link and u.startswith("/"):
+                try:
+                    u = urljoin(base_link, u)
+                except Exception:
+                    pass
+            return u
+
+    # 3) OG image (optional, cheap HEAD/GET)
+    link = getattr(entry, "link", None) or base_link
+    if not link:
+        return None
+    try:
+        html = requests.get(link, headers=HTTP_HEADERS, timeout=6).text
+        m = OG_IMAGE.search(html)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+def _clean_summary(raw):
+    if not raw:
+        return ""
+    if isinstance(raw, list) and raw:
+        raw = raw[0].get("value", "")
+    # strip tags & condense
+    txt = re.sub(r"<[^>]+>", " ", raw)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    # clip very long
+    return txt[:800]
+
+def _looks_bad(title):
+    t = (title or "").lower()
+    return any(h in t for h in NEGATIVE_HINTS)
+
+def _dedupe(items):
+    seen = set()
     out = []
-    for feed_url in dict.fromkeys(feed_urls):  # dedupe
-        try:
-            feed = _pull_feed(feed_url)
-            ftitle = getattr(feed.feed, "title", feed_url)
-            entries = getattr(feed, "entries", [])[:max_per_feed]
-            for e in entries:
-                title = getattr(e, "title", "") or ""
-                link = canonical_url(getattr(e, "link", "") or "")
-                if not title or not link:
-                    continue
-
-                pub = parse_datetime_struct(getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None))
-                if not pub:
-                    # bias unknown dates to older to avoid accidental breaking
-                    pub = datetime.utcnow() - timedelta(days=3)
-
-                summary_raw = getattr(e, "summary", "") or ""
-                summary = clean_summary(summary_raw)
-
-                # light language & reldev filters
-                if not is_english(title + " " + summary):
-                    continue
-                if has_negative_hint(title):
-                    continue
-
-                img = extract_image(e)
-                host = host_of(link)
-                out.append({
-                    "title": title,
-                    "link": link,
-                    "summary": summary,
-                    "published": pub,
-                    "source": ftitle,
-                    "source_host": host,
-                    "image": img,
-                })
-        except Exception as ex:
-            print(f"[feed error] {feed_url}: {ex}")
+    for a in items:
+        key = (a["title"].strip().lower(), a["source_host"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
     return out
+
+# -----------------------------
+# Fetchers
+# -----------------------------
+
+def _parse_feed(url):
+    try:
+        d = feedparser.parse(url)
+        return d
+    except Exception:
+        return None
 
 def fetch_rss_news():
     """
-    Return a relevance-sorted list of news items from:
-      - NEWS_FEEDS (primary)
-      - NITTER_FEEDS (secondary; digest-friendly)
-    Each item contains title, link, summary, source, source_host, image,
-    is_breaking, is_super_breaking, score.
+    Return list of dicts:
+      {title, link, summary, published, is_breaking, is_super_breaking,
+       source, source_host, image, score}
+    Sorted by score desc then recency. Includes Nitter feeds (lower weighted).
     """
-    now = datetime.utcnow()
-    items = _collect_from_feeds(NEWS_FEEDS)
-    # Add creators via Nitter (lower weight)
-    nitter_items = _collect_from_feeds(NITTER_FEEDS, max_per_feed=5)
-    for it in nitter_items:
-        # many Nitter entries have tweet text in title; keep short
-        it["summary"] = it["summary"][:220]
+    now = _now_utc()
+    items = []
 
-    merged = items + nitter_items
+    # Build the pool: news + nitter (nitter last)
+    all_feeds = list(dict.fromkeys(NEWS_FEEDS + NITTER_FEEDS))  # dedupe while preserving order
 
-    # score + breaking flags + simple dedupe on link
-    seen_links = set()
-    normalized = []
-    for a in merged:
-        if a["link"] in seen_links:
+    for feed_url in all_feeds:
+        d = _parse_feed(feed_url)
+        if not d or not getattr(d, "entries", None):
             continue
-        seen_links.add(a["link"])
 
-        sc = score_article(a["title"], a["summary"])
-        age = now - a["published"]
-        a["score"] = sc
-        a["is_super_breaking"] = age <= timedelta(minutes=5)
-        a["is_breaking"] = age <= timedelta(minutes=15)
-        normalized.append(a)
+        src_name = _source_name(d, feed_url)
+        is_nitter = "nitter.net" in feed_url
+        for e in d.entries[:MAX_PER_FEED]:
+            pub = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+            dt = _to_datetime(pub)
+            if not dt:
+                continue
+            if (now - dt) > timedelta(hours=FRESH_NEWS_HOURS):
+                continue
 
-    # Sort: SpaceX/Mars + score + recency
-    normalized.sort(
-        key=lambda x: (
-            any(k in (x["title"] + x["summary"]).lower()
-                for k in ["spacex", "starship", "falcon", "raptor", "starbase", "mars"]),
-            x["score"],
-            x["published"]
-        ),
-        reverse=True
-    )
-    return normalized
+            title = getattr(e, "title", "").strip()
+            if not title or _looks_bad(title):
+                continue
+            summary = _clean_summary(getattr(e, "summary", "") or getattr(e, "description", ""))
+            if not _is_english(title + " " + summary):
+                continue
+
+            link = getattr(e, "link", "").strip()
+            if not link:
+                continue
+
+            sc = _score(title, summary)
+            # Slightly downrank Nitter items so publisher sites win ties
+            if is_nitter:
+                sc -= 1
+
+            image = extract_image_from_entry(e, base_link=link)
+            host = _host(link)
+            is_break = (now - dt) <= timedelta(minutes=BREAKING_MINUTES)
+            is_super = (now - dt) <= timedelta(minutes=SUPER_BREAKING_MINUTES)
+
+            items.append({
+                "title": title,
+                "link": link,
+                "summary": summary,
+                "published": dt,
+                "is_breaking": is_break,
+                "is_super_breaking": is_super,
+                "source": src_name,
+                "source_host": host,
+                "image": image,
+                "score": sc,
+            })
+
+    # Dedupe identicals, then sort by score & recency
+    items = _dedupe(items)
+    items.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+    return items
 
 def fetch_images():
     """
-    Return recent (<= 7 days) images from IMAGE_FEEDS with best-effort metadata.
+    Return list of dicts:
+      {title, url, description, published, source_name, source_link}
     """
-    now = datetime.utcnow()
+    now = _now_utc()
     out = []
-    for a in _collect_from_feeds(IMAGE_FEEDS, max_per_feed=10):
-        if not a.get("image"):
-            # for APOD sometimes the link is an image page; keep anyway
+    for feed_url in IMAGE_FEEDS:
+        d = _parse_feed(feed_url)
+        if not d or not getattr(d, "entries", None):
             continue
-        if (now - a["published"]) > timedelta(days=7):
-            continue
-        out.append({
-            "title": a["title"],
-            "url": a["image"],
-            "published": a["published"],
-            "source_name": a["source"],
-            "source_link": a["link"],
-        })
+        src_name = _source_name(d, feed_url)
+        for e in d.entries[:MAX_PER_FEED]:
+            pub = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+            dt = _to_datetime(pub) or now
+            if (now - dt) > timedelta(days=30):
+                continue
+            title = getattr(e, "title", "").strip() or "Space Image"
+            url = extract_image_from_entry(e, base_link=getattr(e, "link", None))
+            if not url:
+                continue
+            desc = _clean_summary(getattr(e, "summary", ""))
+            out.append({
+                "title": title,
+                "url": url,
+                "description": desc,
+                "published": dt,
+                "source_name": src_name,
+                "source_link": getattr(e, "link", None) or feed_url,
+            })
     # newest first
     out.sort(key=lambda x: x["published"], reverse=True)
     return out
