@@ -5,6 +5,7 @@ import json
 import requests
 from datetime import datetime, timedelta
 from random import sample
+import re
 
 from src.feeds import fetch_rss_news, fetch_images, DEFAULT_TAGS
 
@@ -24,10 +25,7 @@ def save_json(path, data):
         json.dump(data, f, indent=2)
 
 def md_escape(text: str) -> str:
-    """
-    Escape Telegram MarkdownV2-ish special chars we use: _,*,`,[
-    (We’re using Markdown (classic) mode which clashes mainly with these.)
-    """
+    """Escape Telegram Markdown special chars we use."""
     if not text:
         return ""
     return (
@@ -37,6 +35,22 @@ def md_escape(text: str) -> str:
             .replace("[", "\\[")
             .replace("`", "\\`")
     )
+
+def first_sentence(text: str, fallback_title: str, max_words: int = 26) -> str:
+    """
+    Return the first clean sentence from text.
+    Fallback: the first N words from title if text is empty/garbage.
+    """
+    t = (text or "").strip()
+    # Split on period/question/exclamation while keeping natural flow.
+    parts = re.split(r"(?<=[\.!?])\s+", t)
+    cand = parts[0].strip() if parts else ""
+    # Filter obvious credits/bylines
+    if not cand or len(cand) < 20 or "credit" in cand.lower() or "image:" in cand.lower():
+        # fallback to title snippet
+        words = (fallback_title or "").strip().split()
+        cand = " ".join(words[:max_words]).strip()
+    return cand
 
 # ---------------------------
 # Telegram senders (with buttons)
@@ -113,8 +127,8 @@ DISCUSS_URL = "https://x.com/RedHorizonHub"
 
 def run_breaking_news():
     """
-    Post up to 2 breaking items (<= 15 min old), with bold title, image (if any),
-    and inline buttons. Prefers SpaceX-ish + higher score.
+    Post up to 2 breaking items (<= 15 min old), with bold title, first-sentence quick read,
+    image (if any), inline buttons. Prefers SpaceX-ish + higher score.
     """
     seen = load_json("data/seen_links.json", {})
     now = datetime.utcnow()
@@ -137,10 +151,10 @@ def run_breaking_news():
             continue
 
         title = md_escape(a["title"])
-        summary = md_escape(a["summary"])
+        quick = md_escape(first_sentence(a["summary"], a["title"]))
         body = (
             f"🚨 *BREAKING* — {title}\n\n"
-            f"{summary[:420]}…\n\n"
+            f"_Quick read:_ {quick}\n\n"
             f"Read more on {md_escape(a['source'])}\n"
             f"#Breaking #SpaceX #Starship #RedHorizon"
         )
@@ -161,51 +175,84 @@ def run_breaking_news():
 
 def run_daily_digest():
     """
-    5-item digest, SpaceX-biased, Reddit capped to 1, bold titles, quick read,
-    top story image (if available) + inline buttons.
-    Falls back to 72h window if 24h yields <3 items.
+    5-item digest, SpaceX-biased, Reddit capped to 1 across the whole list,
+    bold titles, first-sentence quick read, top story image + buttons.
+    Fallback to 72h window if 24h yields <3 items.
     """
     seen = load_json("data/seen_links.json", {})
     now = datetime.utcnow()
 
-    # Try 24h
-    all_items = fetch_rss_news()[:60]
+    # Try 24h window
+    all_items = fetch_rss_news()[:80]
     fresh = [a for a in all_items if (now - a["published"]) <= timedelta(hours=24)]
 
+    # Rank within two buckets
     spacexy = [a for a in fresh if any(k in (a["title"] + a["summary"]).lower()
                                        for k in ["spacex","starship","falcon","elon","raptor","starbase"])]
     others = [a for a in fresh if a not in spacexy]
-    reddit = [a for a in others if "reddit.com" in a["source_host"]][:1]
-    non_reddit = [a for a in others if "reddit.com" not in a["source_host"]]
 
-    items = (spacexy[:3] + non_reddit[:4] + reddit)[:5]
+    # Sort each bucket by score + recency
+    spacexy.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+    others.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
 
-    # Fallback to 72h if too few
-    if len(items) < 3:
+    # Build final list with Reddit cap = 1 globally
+    final = []
+    reddit_count = 0
+
+    def maybe_add(item):
+        nonlocal reddit_count
+        is_reddit = "reddit.com" in item.get("source_host", "")
+        if is_reddit and reddit_count >= 1:
+            return
+        final.append(item)
+        if is_reddit:
+            reddit_count += 1
+
+    # Prefer up to 3 SpaceX-heavy first, then others
+    for it in spacexy:
+        if len(final) >= 3:
+            break
+        maybe_add(it)
+    for it in others:
+        if len(final) >= 5:
+            break
+        maybe_add(it)
+
+    # If too few, fallback to 72h
+    if len(final) < 3:
         fresh72 = [a for a in all_items if (now - a["published"]) <= timedelta(hours=72)]
         spacexy = [a for a in fresh72 if any(k in (a["title"] + a["summary"]).lower()
                                              for k in ["spacex","starship","falcon","elon","raptor","starbase"])]
         others = [a for a in fresh72 if a not in spacexy]
-        reddit = [a for a in others if "reddit.com" in a["source_host"]][:1]
-        non_reddit = [a for a in others if "reddit.com" not in a["source_host"]]
-        items = (spacexy[:3] + non_reddit[:4] + reddit)[:5]
+        spacexy.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+        others.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
 
-    if not items:
+        final, reddit_count = [], 0
+        for it in spacexy:
+            if len(final) >= 3:
+                break
+            maybe_add(it)
+        for it in others:
+            if len(final) >= 5:
+                break
+            maybe_add(it)
+
+    if not final:
         print("[DIGEST] no-post")
         return "no-post"
 
     extra_tags = " ".join(sample(DEFAULT_TAGS, k=3))
-    top = items[0]
+    top = final[0]
     head = f"🚀 *Red Horizon Daily Digest — {now.strftime('%b %d, %Y')}*"
     blocks = [head, ""]
 
-    for a in items:
+    for a in final:
         title = md_escape(a["title"])
-        summary = md_escape(a["summary"])
+        quick = md_escape(first_sentence(a["summary"], a["title"]))
         clock = a["published"].strftime("%H:%M")
         block = (
             f"• *{title}* — _{md_escape(a['source'])}_ · 🕒 {clock} UTC\n"
-            f"  _Quick read:_ {summary[:240]}…\n"
+            f"  _Quick read:_ {quick}\n"
             f"  ➡️ [Open]({a['link']})\n"
         )
         blocks.append(block)
@@ -221,7 +268,7 @@ def run_daily_digest():
     else:
         send_telegram_message(full_text, buttons=[("Discuss on X", DISCUSS_URL)])
 
-    for a in items:
+    for a in final:
         seen[a["link"]] = True
     save_json("data/seen_links.json", seen)
     send_to_zapier({"text": full_text})
