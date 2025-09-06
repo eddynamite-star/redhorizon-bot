@@ -12,7 +12,7 @@ from src.feeds import fetch_rss_news, fetch_images, DEFAULT_TAGS
 # ---------------------------
 # Small utils: JSON + Markdown
 # ---------------------------
-def load_json(path, fallback):
+def load_json(path, fallback=None):
     try:
         with open(path, "r") as f:
             return json.load(f)
@@ -39,15 +39,12 @@ def md_escape(text: str) -> str:
 def first_sentence(text: str, fallback_title: str, max_words: int = 26) -> str:
     """
     Return the first clean sentence from text.
-    Fallback: the first N words from title if text is empty/garbage.
+    Fallback: first N words from title if text is empty/garbage.
     """
     t = (text or "").strip()
-    # Split on period/question/exclamation while keeping natural flow.
     parts = re.split(r"(?<=[\.!?])\s+", t)
     cand = parts[0].strip() if parts else ""
-    # Filter obvious credits/bylines
     if not cand or len(cand) < 20 or "credit" in cand.lower() or "image:" in cand.lower():
-        # fallback to title snippet
         words = (fallback_title or "").strip().split()
         cand = " ".join(words[:max_words]).strip()
     return cand
@@ -121,7 +118,7 @@ def send_to_zapier(data):
         return False
 
 # ---------------------------
-# Tasks
+# News Tasks
 # ---------------------------
 DISCUSS_URL = "https://x.com/RedHorizonHub"
 
@@ -130,17 +127,17 @@ def run_breaking_news():
     Post up to 2 breaking items (<= 15 min old), with bold title, first-sentence quick read,
     image (if any), inline buttons. Prefers SpaceX-ish + higher score.
     """
-    seen = load_json("data/seen_links.json", {})
+    seen = load_json("data/seen_links.json", {}) or {}
     now = datetime.utcnow()
 
-    items = [a for a in fetch_rss_news()[:40] if a["is_breaking"]]
+    items = [a for a in fetch_rss_news()[:40] if a.get("is_breaking")]
     # prefer SpaceX + score + recency
     items.sort(
         key=lambda x: (
-            any(k in (x["title"] + x["summary"]).lower()
+            any(k in (x.get("title","") + x.get("summary","")).lower()
                 for k in ["spacex", "starship", "falcon", "raptor", "starbase"]),
-            x["score"],
-            x["published"]
+            x.get("score",0),
+            x.get("published", now)
         ),
         reverse=True
     )
@@ -179,7 +176,7 @@ def run_daily_digest():
     bold titles, first-sentence quick read, top story image + buttons.
     Fallback to 72h window if 24h yields <3 items.
     """
-    seen = load_json("data/seen_links.json", {})
+    seen = load_json("data/seen_links.json", {}) or {}
     now = datetime.utcnow()
 
     # Try 24h window
@@ -192,8 +189,8 @@ def run_daily_digest():
     others = [a for a in fresh if a not in spacexy]
 
     # Sort each bucket by score + recency
-    spacexy.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
-    others.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+    spacexy.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
+    others.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
 
     # Build final list with Reddit cap = 1 globally
     final = []
@@ -224,8 +221,8 @@ def run_daily_digest():
         spacexy = [a for a in fresh72 if any(k in (a["title"] + a["summary"]).lower()
                                              for k in ["spacex","starship","falcon","elon","raptor","starbase"])]
         others = [a for a in fresh72 if a not in spacexy]
-        spacexy.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
-        others.sort(key=lambda x: (x["score"], x["published"]), reverse=True)
+        spacexy.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
+        others.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
 
         final, reddit_count = [], 0
         for it in spacexy:
@@ -278,8 +275,8 @@ def run_daily_image():
     """
     Post newest not-yet-seen image; cache image URLs to avoid repeats.
     """
-    seen = load_json("data/seen_links.json", {})
-    cache = load_json("data/image_cache.json", {})  # {url: true}
+    seen = load_json("data/seen_links.json", {}) or {}
+    cache = load_json("data/image_cache.json", {}) or {}  # {url: true}
     imgs = fetch_images()
 
     for im in imgs:
@@ -309,13 +306,156 @@ def run_daily_image():
 def run_welcome_message():
     msg = (
         "👋 *Welcome to Red Horizon!*\n"
-        "Your daily hub for SpaceX, Starship, Mars exploration & missions.\n\n"
+        "Your daily hub for SpaceX, Starship, Mars exploration & culture.\n\n"
         "What to expect:\n"
         "• 🚨 Breaking (only when it truly breaks)\n"
         "• 📰 Daily Digest (5 hand-picked stories)\n"
         "• 📸 Daily Image\n"
-        "• ❓ Polls & explainers\n\n"
+        "• 🎭 Culture Spotlights (books, games, movies/TV)\n\n"
         "Follow on X: @RedHorizonHub"
     )
     send_telegram_message(msg)
     return "ok"
+
+# ---------------------------
+# Culture: Books, Games, Screen (Movies/TV/Docs)
+# ---------------------------
+
+def _load_or_default(path, default_list):
+    data = load_json(path, None)
+    return data if isinstance(data, list) and data else default_list
+
+# Built-in fallbacks (used if JSON files are missing)
+BOOKS_DEFAULT = []  # we’ll rely on data/books.json you paste
+GAMES_DEFAULT = []  # we’ll rely on data/games.json you paste
+SCREEN_DEFAULT = [] # we’ll rely on data/movies.json you paste
+
+def run_book_spotlight():
+    books = _load_or_default("data/books.json", BOOKS_DEFAULT)
+    if not books:
+        return "No books"
+    idx_data = load_json("data/book_index.json", {"index": 0})
+    idx = int(idx_data.get("index", 0)) % len(books)
+    b = books[idx]
+
+    title = md_escape(b.get("title", "Unknown Title"))
+    author = md_escape(b.get("author", "Unknown Author"))
+    cover = b.get("cover_image") or ""
+    review = b.get("review_link") or ""
+    wiki = b.get("wiki_link") or ""
+
+    caption = (
+        f"📚 *Book Spotlight*\n"
+        f"_{title}_ — {author}\n\n"
+        f"#Books #SciFi #Space #RedHorizon"
+    )
+    buttons = []
+    if review: buttons.append(("📖 Review", review))
+    if wiki:   buttons.append(("🌐 Wiki", wiki))
+
+    ok = False
+    if cover:
+        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    if not ok:
+        ok = send_telegram_message(caption, buttons if buttons else None)
+
+    if ok:
+        idx_data["index"] = idx + 1
+        save_json("data/book_index.json", idx_data)
+        send_to_zapier({"text": f"Book: {b.get('title')} — {b.get('author')}"})
+        return "ok"
+    return "Failed"
+
+def run_game_spotlight():
+    games = _load_or_default("data/games.json", GAMES_DEFAULT)
+    if not games:
+        return "No games"
+    idx_data = load_json("data/game_index.json", {"index": 0})
+    idx = int(idx_data.get("index", 0)) % len(games)
+    g = games[idx]
+
+    title = md_escape(g.get("title", "Unknown Game"))
+    summary = md_escape(g.get("summary", "Space exploration or strategy experience."))
+    cover = g.get("cover_image") or ""
+    site = g.get("official_site") or ""
+    trailer = g.get("trailer_link") or ""
+
+    caption = (
+        f"🎮 *Game Spotlight*\n"
+        f"_{title}_\n\n"
+        f"{summary}\n\n"
+        f"#Gaming #Space #Exploration #RedHorizon"
+    )
+    buttons = []
+    if site:    buttons.append(("🌐 Official Site", site))
+    if trailer: buttons.append(("▶ Trailer", trailer))
+
+    ok = False
+    if cover:
+        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    if not ok:
+        ok = send_telegram_message(caption, buttons if buttons else None)
+
+    if ok:
+        idx_data["index"] = idx + 1
+        save_json("data/game_index.json", idx_data)
+        send_to_zapier({"text": f"Game: {g.get('title')}"})
+        return "ok"
+    return "Failed"
+
+def run_movie_spotlight():
+    screen = _load_or_default("data/movies.json", SCREEN_DEFAULT)  # films/TV/docs
+    if not screen:
+        return "No screen items"
+    idx_data = load_json("data/movie_index.json", {"index": 0})
+    idx = int(idx_data.get("index", 0)) % len(screen)
+    m = screen[idx]
+
+    title = md_escape(m.get("title", "Unknown Title"))
+    kind  = md_escape(m.get("type", "Screen"))
+    year  = m.get("year", "")
+    cover = m.get("cover_image") or ""
+    trailer = m.get("trailer_link") or ""
+    wiki    = m.get("wiki_link") or ""
+
+    head = f"🎬 *{kind} Spotlight*"
+    meta = f"_{title}_ ({year})" if year else f"_{title}_"
+    caption = f"{head}\n{meta}\n\n#Movies #SciFi #Space #RedHorizon"
+
+    buttons = []
+    if trailer: buttons.append(("▶ Trailer", trailer))
+    if wiki:    buttons.append(("🌐 Wiki", wiki))
+
+    ok = False
+    if cover:
+        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    if not ok:
+        ok = send_telegram_message(caption, buttons if buttons else None)
+
+    if ok:
+        idx_data["index"] = idx + 1
+        save_json("data/movie_index.json", idx_data)
+        send_to_zapier({"text": f"Screen: {m.get('title')} ({m.get('type')})"})
+        return "ok"
+    return "Failed"
+
+def run_culture_daily():
+    """
+    Rotates daily between: book -> game -> screen.
+    Persists rotation in data/media_cycle.json.
+    """
+    order = ["book", "game", "screen"]
+    cycle = load_json("data/media_cycle.json", {"index": 0})
+    i = int(cycle.get("index", 0)) % len(order)
+    pick = order[i]
+
+    if pick == "book":
+        res = run_book_spotlight()
+    elif pick == "game":
+        res = run_game_spotlight()
+    else:
+        res = run_movie_spotlight()
+
+    cycle["index"] = i + 1
+    save_json("data/media_cycle.json", cycle)
+    return res or "ok"
