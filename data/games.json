@@ -1,22 +1,102 @@
 [
-  {"title":"Kerbal Space Program","summary":"Physics-based rocketry and exploration sandbox.","cover_image":"https://upload.wikimedia.org/wikipedia/en/1/10/Kerbal_Space_Program_logo.png","official_site":"https://www.kerbalspaceprogram.com/","trailer_link":"https://www.youtube.com/watch?v=ETlQ1eT2U1g"},
-  {"title":"Kerbal Space Program 2","summary":"Sequel with colonies and interstellar travel.","cover_image":"https://upload.wikimedia.org/wikipedia/en/2/27/Kerbal_Space_Program_2_logo.png","official_site":"https://www.kerbalspaceprogram.com/games/kerbal-space-program-2/","trailer_link":"https://www.youtube.com/watch?v=P_nj6wW6Gsc"},
-  {"title":"Elite Dangerous","summary":"Open-galaxy sim with trading and exploration.","cover_image":"https://upload.wikimedia.org/wikipedia/en/b/b5/Elite_Dangerous_cover_art.png","official_site":"https://www.elitedangerous.com/","trailer_link":"https://www.youtube.com/watch?v=H1Qd9Xb9SxA"},
-  {"title":"Star Citizen","summary":"Expansive MMO space sim (playable alpha).","cover_image":"https://upload.wikimedia.org/wikipedia/commons/5/5e/Star_Citizen_Logo.png","official_site":"https://robertsspaceindustries.com/","trailer_link":"https://www.youtube.com/watch?v=G8YZUQzvFfY"},
-  {"title":"EVE Online","summary":"Legendary MMO with economy, politics, combat.","cover_image":"https://upload.wikimedia.org/wikipedia/en/6/68/Eve_Online_logo.png","official_site":"https://www.eveonline.com/","trailer_link":"https://www.youtube.com/watch?v=AdfFnTt2UT0"},
-  {"title":"Space Engineers","summary":"Sandbox building, mining and space survival.","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/9b/Space_Engineers_logo.png","official_site":"https://www.spaceengineersgame.com/","trailer_link":"https://www.youtube.com/watch?v=9w5-7KkZ5hI"},
-  {"title":"No Man’s Sky","summary":"Exploration, base building, multiplayer.","cover_image":"https://upload.wikimedia.org/wikipedia/en/b/b0/No_Man%27s_Sky_cover_art.jpg","official_site":"https://www.nomanssky.com/","trailer_link":"https://www.youtube.com/watch?v=nLtmEjqzg7M"},
-  {"title":"Outer Wilds","summary":"Narrative time-loop exploration mystery.","cover_image":"https://upload.wikimedia.org/wikipedia/en/5/5a/Outer_Wilds_cover_art.jpg","official_site":"https://www.mobiusdigitalgames.com/outer-wilds.html","trailer_link":"https://www.youtube.com/watch?v=ZKJUMMCJVP8"},
-  {"title":"Universe Sandbox","summary":"Physics-driven simulator of gravity and planets.","cover_image":"https://upload.wikimedia.org/wikipedia/en/d/dc/Universe_Sandbox_logo.png","official_site":"https://universesandbox.com/","trailer_link":"https://www.youtube.com/watch?v=YQS5U6OJv1c"},
-  {"title":"Take On Mars","summary":"Mars exploration simulator.","cover_image":"https://upload.wikimedia.org/wikipedia/en/6/6c/Take_On_Mars_logo.png","official_site":"https://mars.takeonthegame.com/","trailer_link":"https://www.youtube.com/watch?v=p8b0P0zK7z0"},
-  {"title":"Surviving Mars","summary":"Colony-building survival on Mars.","cover_image":"https://upload.wikimedia.org/wikipedia/en/0/06/Surviving_Mars_cover_art.jpg","official_site":"https://www.paradoxinteractive.com/games/surviving-mars/about","trailer_link":"https://www.youtube.com/watch?v=Z9T4fAnox2I"},
-  {"title":"Terraformers","summary":"Turn-based terraforming strategy on Mars.","cover_image":"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1244800/header.jpg","official_site":"https://terraformers.critees.com/","trailer_link":"https://www.youtube.com/watch?v=8z4FzZ3Ywlg"},
-  {"title":"Per Aspera","summary":"AI-led terraforming simulation.","cover_image":"https://upload.wikimedia.org/wikipedia/en/3/3e/Per_Aspera_cover_art.jpg","official_site":"https://www.rawfury.com/games/per-aspera","trailer_link":"https://www.youtube.com/watch?v=1USK9PqQFps"},
-  {"title":"Civilization: Beyond Earth","summary":"4X strategy beyond Earth.","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/95/Civilization_Beyond_Earth_cover_art.jpg","official_site":"https://civilization.com/en/games/civilization-beyond-earth/","trailer_link":"https://www.youtube.com/watch?v=qtYWqE55s24"},
-  {"title":"Sid Meier’s Alpha Centauri","summary":"Classic colony-strategy in space.","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/99/Alpha_Centauri_cover.jpg","official_site":"https://www.ea.com/games/alpha-centauri","trailer_link":"https://www.youtube.com/watch?v=3iJjW2lE8k4"},
-  {"title":"Stellaris","summary":"Grand strategy in space (Paradox).","cover_image":"https://upload.wikimedia.org/wikipedia/en/5/5e/Stellaris_box_art.jpg","official_site":"https://www.paradoxinteractive.com/games/stellaris/about","trailer_link":"https://www.youtube.com/watch?v=Qo4jsgU6H3Q"},
-  {"title":"Mass Effect Legendary Edition","summary":"Space RPG epic remastered.","cover_image":"https://upload.wikimedia.org/wikipedia/en/9/9f/Mass_Effect_Legendary_Edition_cover_art.jpg","official_site":"https://www.ea.com/games/mass-effect/mass-effect-legendary-edition","trailer_link":"https://www.youtube.com/watch?v=jxH7c1p0kO8"},
-  {"title":"Mass Effect: Andromeda","summary":"RPG continuation in a new galaxy.","cover_image":"https://upload.wikimedia.org/wikipedia/en/0/05/Mass_Effect_Andromeda_box.jpg","official_site":"https://www.ea.com/games/mass-effect/mass-effect-andromeda","trailer_link":"https://www.youtube.com/watch?v=sy-c8C6A3IY"},
-  {"title":"Dead Space (remake)","summary":"Survival horror in space.","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/8f/Dead_Space_2023_cover_art.jpg","official_site":"https://www.ea.com/games/dead-space/dead-space","trailer_link":"https://www.youtube.com/watch?v=ctQl9wa3ydE"},
-  {"title":"Halo: The Master Chief Collection","summary":"Iconic space-military saga.","cover_image":"https://upload.wikimedia.org/wikipedia/en/8/89/Halo-_The_Master_Chief_Collection.jpg","official_site":"https://www.halowaypoint.com/","trailer_link":"https://www.youtube.com/watch?v=OjI8eRh3md8"}
+  {
+    "title": "Kerbal Space Program",
+    "creator": "Squad",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/9d/Kerbal_Space_Program_Logo.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Kerbal_Space_Program",
+    "official": "https://www.kerbalspaceprogram.com/",
+    "trailer": "https://www.youtube.com/watch?v=QEU9MZ61OIs",
+    "summary": "A physics-accurate rocketry sandbox about exploding your way to competence.",
+    "blurb": "The beloved orbital-mechanics toybox: build, fail spectacularly, and finally stick the landing. The most educational fun you can have with delta-v."
+  },
+  {
+    "title": "Kerbal Space Program 2",
+    "creator": "Intercept Games",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/9/99/Kerbal_Space_Program_2_logo.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Kerbal_Space_Program_2",
+    "official": "https://www.privatedivision.com/games/kerbal-space-program-2/",
+    "trailer": "https://www.youtube.com/watch?v=P_nj6wW6Gsc",
+    "summary": "Sequel with colonies, interstellar travel, and prettier explosions.",
+    "blurb": "Everything you love about KSP, now with long-term programs: colonies, resource chains, and eventually interstellar journeys."
+  },
+  {
+    "title": "Elite Dangerous",
+    "creator": "Frontier Developments",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/0a/Elite_Dangerous_logo.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Elite_Dangerous",
+    "official": "https://www.elitedangerous.com/",
+    "trailer": "https://www.youtube.com/watch?v=ISR4ebdGlOk",
+    "summary": "A massive galaxy to trade, explore, and fight in.",
+    "blurb": "A 1:1 Milky Way playground with gorgeous vistas and deep sim DNA—perfect for chill exploration or high-stakes dogfights."
+  },
+  {
+    "title": "No Man’s Sky",
+    "creator": "Hello Games",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/3/31/No_Man%27s_Sky.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/No_Man%27s_Sky",
+    "official": "https://www.nomanssky.com/",
+    "trailer": "https://www.youtube.com/watch?v=JCmG2Yz4Z18",
+    "summary": "Procedural galaxies with bases, quests, and cozy exploration.",
+    "blurb": "From comeback story to comfort game—NMS now brims with co-op adventures, creative building, and serene star-hopping."
+  },
+  {
+    "title": "Surviving Mars",
+    "creator": "Haemimont Games",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/6/6c/Surviving_Mars_cover_art.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Surviving_Mars",
+    "official": "https://www.paradoxinteractive.com/games/surviving-mars/about",
+    "trailer": "https://www.youtube.com/watch?v=hmkYF_Rrj2E",
+    "summary": "Colony sim: domes, drones, and scarcity on the Red Planet.",
+    "blurb": "A crisp management puzzle where every resource has a cost—and dust storms have opinions. Super satisfying once the pipes all connect."
+  },
+  {
+    "title": "Terraformers",
+    "creator": "Asteroid Lab",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/4/4b/Terraformers_cover.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Terraformers_(video_game)",
+    "official": "https://terraformers-game.com/",
+    "trailer": "https://www.youtube.com/watch?v=8_p1oH0e2fU",
+    "summary": "Turn-based strategy about making Mars habitable.",
+    "blurb": "A thoughtful, optimistic Mars builder where you sculpt climate as much as cities. Great for chill planners."
+  },
+  {
+    "title": "Per Aspera",
+    "creator": "Tlön Industries",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/0/08/Per_Aspera_cover_art.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Per_Aspera",
+    "official": "https://www.rawfury.com/games/per-aspera/",
+    "trailer": "https://www.youtube.com/watch?v=K0dJkF2sF94",
+    "summary": "You are the AI tasked with terraforming Mars itself.",
+    "blurb": "Narrative-driven colony building that asks ethical questions about automation, control, and purpose."
+  },
+  {
+    "title": "Stellaris",
+    "creator": "Paradox Development Studio",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/e/ee/Stellaris_box_art.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Stellaris",
+    "official": "https://www.paradoxinteractive.com/games/stellaris/about",
+    "trailer": "https://www.youtube.com/watch?v=UdJ0E7Nb4mA",
+    "summary": "Grand strategy among the stars with empires, ethics, and eldritch space horrors.",
+    "blurb": "The ultimate ‘what if our species did X’ simulator—rich stories emerge from your policy choices."
+  },
+  {
+    "title": "Outer Wilds",
+    "creator": "Mobius Digital",
+    "cover": "https://upload.wikimedia.org/wikipedia/en/2/2e/Outer_Wilds_cover_art.jpg",
+    "wiki_link": "https://en.wikipedia.org/wiki/Outer_Wilds",
+    "official": "https://www.mobiusdigitalgames.com/outer-wilds.html",
+    "trailer": "https://www.youtube.com/watch?v=ZKJUMMCJZsQ",
+    "summary": "A perfect time-loop mystery about curiosity and endings.",
+    "blurb": "One of the best space stories ever told—no combat, just wonder and the joy of understanding."
+  },
+  {
+    "title": "Universe Sandbox",
+    "creator": "Giant Army",
+    "cover": "https://upload.wikimedia.org/wikipedia/commons/0/0c/Universe_Sandbox_logo.png",
+    "wiki_link": "https://en.wikipedia.org/wiki/Universe_Sandbox",
+    "official": "https://universesandbox.com/",
+    "trailer": "https://www.youtube.com/watch?v=K1jtJ7r0N4w",
+    "summary": "A physics playground for gravity, collisions, and climate.",
+    "blurb": "Make planets, smash planets, heat planets—then call it science. A mesmerizing lab for the cosmic tinkerer."
+  }
 ]
