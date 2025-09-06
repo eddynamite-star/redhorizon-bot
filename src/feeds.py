@@ -126,7 +126,7 @@ def fetch_rss_news(is_terraforming: bool = False):
 
                 title = getattr(e, "title", "").strip()
                 link = getattr(e, "link", "").strip()
-                summary = getattr(e, "summary", "") or ""
+                summary = clean_summary(getattr(e, "summary", "") or "")
                 low_title = title.lower()
 
                 # negative hints filter
