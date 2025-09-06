@@ -6,6 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from random import sample
 import re
+from urllib.parse import urlparse, unquote
 
 from src.feeds import fetch_rss_news, fetch_images, DEFAULT_TAGS
 
@@ -318,6 +319,99 @@ def run_welcome_message():
     return "ok"
 
 # ---------------------------
+# Culture blurbs (custom from review/wiki)
+# ---------------------------
+
+DEFAULT_CULTURE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/NGC_1309.jpg/640px-NGC_1309.jpg"
+
+def _wiki_summary_from_link(wiki_link: str) -> str:
+    """
+    Use Wikipedia REST Summary API for clean 1–3 sentence extracts.
+    """
+    try:
+        p = urlparse(wiki_link)
+        if "wikipedia.org" not in p.netloc.lower():
+            return ""
+        # Title after /wiki/
+        path = p.path
+        if "/wiki/" not in path:
+            return ""
+        title = path.split("/wiki/")[-1]
+        title = unquote(title)
+        api = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
+        hdrs = {"Accept": "application/json"}
+        r = requests.get(api, headers=hdrs, timeout=8)
+        if r.status_code != 200:
+            return ""
+        data = r.json()
+        extract = data.get("extract", "").strip()
+        if not extract:
+            return ""
+        # Return first two sentences
+        parts = re.split(r"(?<=[\.!?])\s+", extract)
+        return " ".join(parts[:2]).strip()
+    except Exception:
+        return ""
+
+def _html_first_paragraph(url: str) -> str:
+    """
+    Fallback: fetch HTML and try to extract first paragraph text,
+    then return first two sentences.
+    """
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if r.status_code != 200:
+            return ""
+        html = r.text
+        # naive extract first <p> ... </p>
+        m = re.search(r"<p[^>]*>(.*?)</p>", html, re.I | re.S)
+        if not m:
+            return ""
+        text = re.sub(r"<[^>]+>", " ", m.group(1))  # strip tags
+        text = re.sub(r"\s+", " ", text).strip()
+        parts = re.split(r"(?<=[\.!?])\s+", text)
+        return " ".join(parts[:2]).strip()
+    except Exception:
+        return ""
+
+def fetch_custom_blurb(meta: dict, kind: str) -> str:
+    """
+    Try, in order:
+      1) Explicit 'blurb' in JSON item
+      2) Wikipedia Summary API (if wiki_link present)
+      3) First paragraph from review_link / wiki_link HTML
+    Returns a 2-sentence string (best effort).
+    """
+    # 1) explicit blurb
+    b = (meta.get("blurb") or "").strip()
+    if b:
+        return b
+
+    # 2) Wikipedia summary API
+    wiki = meta.get("wiki_link")
+    if wiki:
+        s = _wiki_summary_from_link(wiki)
+        if s:
+            return s
+
+    # 3) First paragraph from review/wiki HTML
+    for url in [meta.get("review_link"), wiki]:
+        if not url:
+            continue
+        s = _html_first_paragraph(url)
+        if s:
+            return s
+
+    # last-resort short line
+    title = meta.get("title", "this work")
+    if kind == "book":
+        return f"{title} is a noted space-related read that resonates with Red Horizon’s audience."
+    if kind == "game":
+        return f"{title} offers an engaging space experience for explorers and sim fans."
+    # screen
+    return f"{title} captures the awe and peril of space in a way that sticks with you."
+
+# ---------------------------
 # Culture: Books, Games, Screen (Movies/TV/Docs)
 # ---------------------------
 
@@ -325,10 +419,10 @@ def _load_or_default(path, default_list):
     data = load_json(path, None)
     return data if isinstance(data, list) and data else default_list
 
-# Built-in fallbacks (used if JSON files are missing)
-BOOKS_DEFAULT = []  # we’ll rely on data/books.json you paste
-GAMES_DEFAULT = []  # we’ll rely on data/games.json you paste
-SCREEN_DEFAULT = [] # we’ll rely on data/movies.json you paste
+# Built-in fallbacks (kept empty; we rely on JSON files you provided)
+BOOKS_DEFAULT = []
+GAMES_DEFAULT = []
+SCREEN_DEFAULT = []
 
 def run_book_spotlight():
     books = _load_or_default("data/books.json", BOOKS_DEFAULT)
@@ -344,18 +438,21 @@ def run_book_spotlight():
     review = b.get("review_link") or ""
     wiki = b.get("wiki_link") or ""
 
+    blurb_raw = fetch_custom_blurb(b, "book")
+    blurb = md_escape(blurb_raw)
+
     caption = (
         f"📚 *Book Spotlight*\n"
         f"_{title}_ — {author}\n\n"
+        f"{blurb}\n\n"
         f"#Books #SciFi #Space #RedHorizon"
     )
     buttons = []
     if review: buttons.append(("📖 Review", review))
     if wiki:   buttons.append(("🌐 Wiki", wiki))
 
-    ok = False
-    if cover:
-        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    image = cover or DEFAULT_CULTURE_IMAGE
+    ok = send_telegram_image(image, caption, buttons if buttons else None)
     if not ok:
         ok = send_telegram_message(caption, buttons if buttons else None)
 
@@ -375,24 +472,25 @@ def run_game_spotlight():
     g = games[idx]
 
     title = md_escape(g.get("title", "Unknown Game"))
-    summary = md_escape(g.get("summary", "Space exploration or strategy experience."))
     cover = g.get("cover_image") or ""
     site = g.get("official_site") or ""
     trailer = g.get("trailer_link") or ""
 
+    blurb_raw = fetch_custom_blurb(g, "game")
+    blurb = md_escape(blurb_raw)
+
     caption = (
         f"🎮 *Game Spotlight*\n"
         f"_{title}_\n\n"
-        f"{summary}\n\n"
+        f"{blurb}\n\n"
         f"#Gaming #Space #Exploration #RedHorizon"
     )
     buttons = []
     if site:    buttons.append(("🌐 Official Site", site))
     if trailer: buttons.append(("▶ Trailer", trailer))
 
-    ok = False
-    if cover:
-        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    image = cover or DEFAULT_CULTURE_IMAGE
+    ok = send_telegram_image(image, caption, buttons if buttons else None)
     if not ok:
         ok = send_telegram_message(caption, buttons if buttons else None)
 
@@ -418,17 +516,19 @@ def run_movie_spotlight():
     trailer = m.get("trailer_link") or ""
     wiki    = m.get("wiki_link") or ""
 
+    blurb_raw = fetch_custom_blurb(m, "screen")
+    blurb = md_escape(blurb_raw)
+
     head = f"🎬 *{kind} Spotlight*"
     meta = f"_{title}_ ({year})" if year else f"_{title}_"
-    caption = f"{head}\n{meta}\n\n#Movies #SciFi #Space #RedHorizon"
+    caption = f"{head}\n{meta}\n\n{blurb}\n\n#Movies #SciFi #Space #RedHorizon"
 
     buttons = []
     if trailer: buttons.append(("▶ Trailer", trailer))
     if wiki:    buttons.append(("🌐 Wiki", wiki))
 
-    ok = False
-    if cover:
-        ok = send_telegram_image(cover, caption, buttons if buttons else None)
+    image = cover or DEFAULT_CULTURE_IMAGE
+    ok = send_telegram_image(image, caption, buttons if buttons else None)
     if not ok:
         ok = send_telegram_message(caption, buttons if buttons else None)
 
