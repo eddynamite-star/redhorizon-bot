@@ -6,85 +6,60 @@ import json
 import html
 import requests
 from datetime import datetime, timedelta
-from random import sample
 from urllib.parse import urlparse, unquote
 
-from src.feeds import (
-    fetch_rss_news,   # returns list of dicts with: title, link, summary, published(dt), source, source_host, image?, is_breaking?, score
-    fetch_images,     # returns list of dicts with: title, url(image), published(dt), source_name, source_link
-    DEFAULT_TAGS,     # e.g., ["#Space", "#Mars", "#SpaceX", "#Starship", "#RedHorizon"]
-)
+from src.feeds import fetch_rss_news, fetch_images, DEFAULT_TAGS
 
-# ---------------------------------
-# Constants / Files / HTTP headers
-# ---------------------------------
-DISCUSS_URL = "https://x.com/RedHorizonHub"
-HEADERS = {"User-Agent": "Mozilla/5.0 (RedHorizonBot)"}
-
-DATA_DIR = "data"
-SEEN_FILE         = os.path.join(DATA_DIR, "seen_links.json")
-IMAGE_CACHE_FILE  = os.path.join(DATA_DIR, "image_cache.json")
-
-# Culture data files
-BOOKS_FILE  = os.path.join(DATA_DIR, "books.json")
-GAMES_FILE  = os.path.join(DATA_DIR, "games.json")
-MOVIES_FILE = os.path.join(DATA_DIR, "movies.json")
-STATE_FILE  = os.path.join(DATA_DIR, "culture_state.json")
-
-# -------------
+# =========================
 # JSON helpers
-# -------------
-def _load(path, default):
+# =========================
+def load_json(path, default=None):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except FileNotFoundError:
-        return default
     except Exception:
         return default
 
-def _save(path, data):
+def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# -------------
-# Text helpers
-# -------------
-def _safe(text: str) -> str:
-    """Escape for Telegram HTML mode."""
-    return html.escape(text or "")
+# =========================
+# Markdown helpers (Telegram)
+# =========================
+def md_escape(text: str) -> str:
+    """Escape chars for Telegram Markdown (basic) we actually use."""
+    if not text:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+            .replace("_", "\\_")
+            .replace("*", "\\*")
+            .replace("[", "\\[")
+            .replace("`", "\\`")
+    )
 
-def _first_sentence(text: str, fallback_title: str, max_words: int = 26) -> str:
-    """
-    Try to return the first clean sentence from text.
-    Fallback to first N words from title if text is empty/credits/img tags.
-    """
+def first_sentence(text: str, fallback_title: str, max_words: int = 26) -> str:
+    """Pick a clean first sentence; fallback to a trimmed title."""
     t = (text or "").strip()
-    # Strip rudimentary tags if any slipped through
+    # strip obvious HTML
     t = re.sub(r"<[^>]+>", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
-
     parts = re.split(r"(?<=[.!?])\s+", t)
     cand = parts[0].strip() if parts else ""
-    bad = ("credit", "image:", "src=", "href=", "figure")
-    if not cand or len(cand) < 20 or any(b in cand.lower() for b in bad):
+    badbits = ("credit", "image:", "photo:", "subscribe", "sign up")
+    if not cand or len(cand) < 20 or any(b in cand.lower() for b in badbits):
         words = (fallback_title or "").strip().split()
         cand = " ".join(words[:max_words]).strip()
     return cand
 
-def _host(url: str) -> str:
-    try:
-        return urlparse(url).netloc.lower()
-    except Exception:
-        return ""
-
-# ------------------------
-# Telegram API (HTML mode)
-# ------------------------
-def _tg_send_message(text, buttons=None, disable_preview=False):
-    bot = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat = os.getenv("TELEGRAM_CHANNEL_ID", "")
+# =========================
+# Telegram senders (Markdown + inline buttons)
+# =========================
+def send_telegram_message(text, buttons=None, disable_preview=False, retry=True):
+    bot = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat = os.getenv("TELEGRAM_CHANNEL_ID")
     if not bot or not chat:
         print("[TG] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID")
         return False
@@ -93,24 +68,29 @@ def _tg_send_message(text, buttons=None, disable_preview=False):
     payload = {
         "chat_id": chat,
         "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": disable_preview,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": bool(disable_preview),
     }
     if buttons:
-        payload["reply_markup"] = {"inline_keyboard": [buttons]}
+        payload["reply_markup"] = {
+            "inline_keyboard": [[{"text": label, "url": href}] for (label, href) in buttons]
+        }
+
     try:
         r = requests.post(url, json=payload, timeout=15)
-        if r.status_code != 200:
+        ok = (r.status_code == 200)
+        if not ok:
             print("[TG] sendMessage error:", r.text)
-            return False
-        return True
+            if retry:
+                return send_telegram_message(text, buttons, disable_preview, retry=False)
+        return ok
     except Exception as e:
         print("[TG] sendMessage exception:", e)
         return False
 
-def _tg_send_photo(photo_url, caption, buttons=None):
-    bot = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat = os.getenv("TELEGRAM_CHANNEL_ID", "")
+def send_telegram_image(image_url, caption, buttons=None, retry=True):
+    bot = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat = os.getenv("TELEGRAM_CHANNEL_ID")
     if not bot or not chat:
         print("[TG] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID")
         return False
@@ -118,283 +98,253 @@ def _tg_send_photo(photo_url, caption, buttons=None):
     url = f"https://api.telegram.org/bot{bot}/sendPhoto"
     payload = {
         "chat_id": chat,
-        "photo": photo_url,
+        "photo": image_url,
         "caption": caption,
-        "parse_mode": "HTML",
+        "parse_mode": "Markdown",
     }
     if buttons:
-        payload["reply_markup"] = {"inline_keyboard": [buttons]}
+        payload["reply_markup"] = {
+            "inline_keyboard": [[{"text": label, "url": href}] for (label, href) in buttons]
+        }
+
     try:
         r = requests.post(url, json=payload, timeout=20)
-        if r.status_code != 200:
-            print("[TG] sendPhoto error (fallback to text):", r.text)
-            return _tg_send_message(caption, buttons)
-        return True
+        ok = (r.status_code == 200)
+        if not ok:
+            print("[TG] sendPhoto error:", r.text)
+            if retry:
+                return send_telegram_image(image_url, caption, buttons, retry=False)
+        return ok
     except Exception as e:
-        print("[TG] sendPhoto exception, fallback to text:", e)
-        return _tg_send_message(caption, buttons)
+        print("[TG] sendPhoto exception:", e)
+        return False
 
-def _buttons_open_and_discuss(link: str):
-    return [
-        {"text": "➡️ Open", "url": link},
-        {"text": "💬 Discuss on X", "url": DISCUSS_URL},
-    ]
-
-# ------------
-# Zapier hook
-# ------------
-def _zapier_send(data):
-    hook = os.getenv("ZAPIER_HOOK_URL", "")
+def send_to_zapier(data):
+    hook = os.getenv("ZAPIER_HOOK_URL")
     if not hook:
         return True
     try:
         r = requests.post(hook, json=data, timeout=10)
         if r.status_code not in (200, 201):
             print("[Zapier] error:", r.status_code, r.text)
-            return False
-        return True
+        return r.status_code in (200, 201)
     except Exception as e:
         print("[Zapier] exception:", e)
         return False
 
-# -------------------------------
-# Helper: pick hero image for digest
-# -------------------------------
-def _og_image(url):
-    try:
-        html_txt = requests.get(url, headers=HEADERS, timeout=8).text
-        m = re.search(r'(?:property|name)=["\']og:image["\']\s*content=["\']([^"\']+)["\']', html_txt, re.I)
-        if m:
-            return m.group(1)
-    except Exception:
-        pass
-    return None
+# =========================
+# NEWS TASKS
+# =========================
+DISCUSS_URL = "https://x.com/RedHorizonHub"
 
-def _pick_hero(items):
-    """Return (hero_item, hero_image_url or None)."""
-    for it in items:
-        if it.get("image"):
-            return it, it["image"]
-    if items:
-        img = _og_image(items[0]["link"])
-        if img:
-            items[0]["image"] = img
-            return items[0], img
-        return items[0], None
-    return None, None
-
-# -------------
-# Breaking news
-# -------------
 def run_breaking_news():
     """
-    Post up to 2 breaking items (<= 15 min old).
-    SpaceX/Starship weighted. Bold titles. First-sentence quick read.
-    Includes image when present. Inline Open + Discuss buttons.
+    Post up to 2 breaking items (<=15 min). Bold title, first-sentence quick read,
+    image (if any), buttons. Biased to SpaceX + higher score + recency.
     """
-    seen = _load(SEEN_FILE, {}) or {}
+    seen = load_json("data/seen_links.json", {}) or {}
     now = datetime.utcnow()
 
     items = [a for a in fetch_rss_news()[:60] if a.get("is_breaking")]
-    # weight: SpaceX-ish + score + recency
-    def _weight(x):
-        txt = (x.get("title","") + " " + x.get("summary","")).lower()
-        spacexy = any(k in txt for k in ["spacex","starship","falcon","raptor","starbase","elon"])
-        return (1 if spacexy else 0, x.get("score", 0), x.get("published", now))
-    items.sort(key=_weight, reverse=True)
+    items.sort(
+        key=lambda x: (
+            any(k in (x.get("title","") + x.get("summary","")).lower()
+                for k in ["spacex","starship","falcon","raptor","starbase"]),
+            x.get("score", 0),
+            x.get("published", now)
+        ),
+        reverse=True
+    )
 
     posted = 0
     for a in items[:2]:
         if a["link"] in seen:
             continue
 
-        title = _safe(a["title"])
-        quick = _safe(_first_sentence(a["summary"], a["title"]))
-        src   = _safe(a["source"])
+        title = md_escape(a["title"])
+        quick = md_escape(first_sentence(a["summary"], a["title"]))
         body = (
-            f"🚨 <b>BREAKING</b> — <b>{title}</b>\n\n"
-            f"<i>Quick read:</i> {quick}\n\n"
-            f"Read more on {src}\n"
-            f"#Breaking #SpaceX #Starship #RedHorizon"
+            f"🚨 *BREAKING* — *{title}*\n\n"
+            f"_Quick read:_ {quick}\n\n"
+            f"Read more on {md_escape(a['source'])}\n"
+            f"#Breaking #Space #SpaceX #Starship #RedHorizon"
         )
+        buttons = [("Open", a["link"]), ("Discuss on X", DISCUSS_URL)]
+
         ok = False
         if a.get("image"):
-            ok = _tg_send_photo(a["image"], body, _buttons_open_and_discuss(a["link"]))
+            ok = send_telegram_image(a["image"], body, buttons)
         if not ok:
-            ok = _tg_send_message(body, _buttons_open_and_discuss(a["link"]))
+            ok = send_telegram_message(body, buttons)
+
         if ok:
             seen[a["link"]] = True
             posted += 1
 
-    _save(SEEN_FILE, seen)
+    save_json("data/seen_links.json", seen)
     return "ok" if posted else "no-post"
 
-# -----------
-# Daily digest
-# -----------
 def run_daily_digest():
     """
-    5-item digest, SpaceX-weighted, Reddit capped to 1 total.
-    Bold titles, 'Quick read' 1-sentence, hero image for the top story
-    (uses article image or falls back to og:image).
-    Falls back to 72h window if 24h yields <3 items.
+    5-item digest, SpaceX-biased, Reddit capped to 1 across the whole list.
+    Bold titles, first-sentence quick read. Sends a top-story image (if present),
+    then the list. Falls back to 72h if <3 in 24h.
     """
-    seen = _load(SEEN_FILE, {}) or {}
+    seen = load_json("data/seen_links.json", {}) or {}
     now = datetime.utcnow()
 
-    all_items = fetch_rss_news()[:100]
+    all_items = fetch_rss_news()[:120]
+    fresh = [a for a in all_items if (now - a["published"]) <= timedelta(hours=24)]
 
-    def _within(items, hours):
-        return [a for a in items if (now - a["published"]) <= timedelta(hours=hours)]
+    spacexy = [a for a in fresh if any(
+        k in (a["title"] + a["summary"]).lower()
+        for k in ["spacex","starship","falcon","elon","raptor","starbase"]
+    )]
+    others = [a for a in fresh if a not in spacexy]
 
-    fresh = _within(all_items, 24)
+    spacexy.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
+    others.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
 
-    def _spacexy(a):
-        t = (a["title"] + " " + a["summary"]).lower()
-        return any(k in t for k in ["spacex","starship","falcon","raptor","starbase","elon"])
+    final, reddit_count = [], 0
 
-    spacex_items = [a for a in fresh if _spacexy(a)]
-    other_items  = [a for a in fresh if not _spacexy(a)]
-
-    spacex_items.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
-    other_items.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
-
-    final = []
-    reddit_count = 0
-    def _maybe_add(item):
+    def maybe_add(item):
         nonlocal reddit_count
-        if "reddit.com" in item.get("source_host",""):
-            if reddit_count >= 1:
-                return
-            reddit_count += 1
+        is_reddit = "reddit.com" in item.get("source_host", "")
+        if is_reddit and reddit_count >= 1:
+            return
         final.append(item)
+        if is_reddit:
+            reddit_count += 1
 
-    for it in spacex_items:
+    for it in spacexy:
         if len(final) >= 3:
             break
-        _maybe_add(it)
-    for it in other_items:
+        maybe_add(it)
+    for it in others:
         if len(final) >= 5:
             break
-        _maybe_add(it)
+        maybe_add(it)
 
-    # Fallback to 72h if too few
     if len(final) < 3:
-        fresh72 = _within(all_items, 72)
-        spacex_items = [a for a in fresh72 if _spacexy(a)]
-        other_items  = [a for a in fresh72 if not _spacexy(a)]
-        spacex_items.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
-        other_items.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
+        fresh72 = [a for a in all_items if (now - a["published"]) <= timedelta(hours=72)]
+        spacexy = [a for a in fresh72 if any(
+            k in (a["title"] + a["summary"]).lower()
+            for k in ["spacex","starship","falcon","elon","raptor","starbase"]
+        )]
+        others = [a for a in fresh72 if a not in spacexy]
+        spacexy.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
+        others.sort(key=lambda x: (x.get("score",0), x["published"]), reverse=True)
         final, reddit_count = [], 0
-        for it in spacex_items:
+        for it in spacexy:
             if len(final) >= 3:
                 break
-            _maybe_add(it)
-        for it in other_items:
+            maybe_add(it)
+        for it in others:
             if len(final) >= 5:
                 break
-            _maybe_add(it)
+            maybe_add(it)
 
     if not final:
         print("[DIGEST] no-post")
         return "no-post"
 
-    # Head & blocks
-    extra_tags = " ".join(sample(DEFAULT_TAGS, k=min(3, len(DEFAULT_TAGS))))
-    head  = f"🚀 <b>Red Horizon Daily Digest — {now.strftime('%b %d, %Y')}</b>"
+    extra_tags = " ".join(DEFAULT_TAGS[:3])
+    top = final[0]
+    head = f"🚀 *Red Horizon Daily Digest — {now.strftime('%b %d, %Y')}*"
     blocks = [head, ""]
 
     for a in final:
-        title = _safe(a["title"])
-        quick = _safe(_first_sentence(a["summary"], a["title"]))
+        title = md_escape(a["title"])
+        quick = md_escape(first_sentence(a["summary"], a["title"]))
         clock = a["published"].strftime("%H:%M")
-        src   = _safe(a["source"])
-        line = (
-            f"• <b>{title}</b> — <i>{src}</i> · 🕒 {clock} UTC\n"
-            f"  <i>Quick read:</i> {quick}\n"
-            f"  ➡️ <a href=\"{a['link']}\">Open</a>\n"
+        block = (
+            f"• *{title}* — _{md_escape(a['source'])}_ · 🕒 {clock} UTC\n"
+            f"  _Quick read:_ {quick}\n"
+            f"  ➡️ [Open]({a['link']})\n"
         )
-        blocks.append(line)
+        blocks.append(block)
 
     blocks.append(f"Follow on X: @RedHorizonHub\n#Daily {extra_tags}")
     full_text = "\n".join(blocks)
 
-    # Pick a hero with image (or og:image)
-    hero, hero_img = _pick_hero(final)
-    if hero_img:
-        _tg_send_photo(hero_img, head, buttons=_buttons_open_and_discuss(hero["link"]))
-        # send list without the duplicate head (skip head + blank)
-        _tg_send_message("\n".join(blocks[2:]), disable_preview=True)
+    # Prefer sending the header as a photo caption if the top story has an image
+    buttons = [("Open top story", top["link"]), ("Discuss on X", DISCUSS_URL)]
+    if top.get("image"):
+        send_telegram_image(top["image"], head, buttons)
+        send_telegram_message("\n".join(blocks[2:]))  # skip header we just sent
     else:
-        _tg_send_message(
-            full_text,
-            buttons=[{"text": "💬 Discuss on X", "url": DISCUSS_URL}],
-            disable_preview=True
-        )
+        send_telegram_message(full_text, buttons=[("Discuss on X", DISCUSS_URL)])
 
     for a in final:
         seen[a["link"]] = True
-    _save(SEEN_FILE, seen)
-    _zapier_send({"text": full_text})
+    save_json("data/seen_links.json", seen)
+    send_to_zapier({"text": full_text})
     return "ok"
 
-# -----------
-# Daily image
-# -----------
 def run_daily_image():
     """
-    Post newest not-yet-seen image; cache image URLs to avoid repeats.
+    Post newest not-yet-seen image. Cache posted URLs to avoid repeats.
     """
-    seen  = _load(SEEN_FILE, {}) or {}
-    cache = _load(IMAGE_CACHE_FILE, {}) or {}  # {url: True}
+    seen = load_json("data/seen_links.json", {}) or {}
+    cache = load_json("data/image_cache.json", {}) or {}
     imgs = fetch_images()
 
     for im in imgs:
         if im["url"] in seen or cache.get(im["url"]):
             continue
 
-        title = _safe(im.get("title") or "Space Image")
-        date  = im["published"].strftime("%b %d, %Y")
-        caption = f"📸 <b>Red Horizon Daily Image</b>\n{title}\n<i>{date}</i>\n#Space #Mars #RedHorizon"
+        title = md_escape(im["title"] or "Space Image")
+        date = im["published"].strftime("%b %d, %Y")
+        hashtags = " ".join(["#Space", "#Mars", "#RedHorizon"])
+        caption = f"📸 *Red Horizon Daily Image*\n{title}\n_{date}_\n{hashtags}"
 
         buttons = []
         if im.get("source_link"):
-            buttons.append({"text": "Source", "url": im["source_link"]})
+            buttons.append(("Source", im["source_link"]))
         else:
-            buttons.append({"text": "Open", "url": im["url"]})
+            buttons.append(("Open", im["url"]))
 
-        if _tg_send_photo(im["url"], caption, buttons=[buttons]):
+        if send_telegram_image(im["url"], caption, buttons):
             seen[im["url"]] = True
             cache[im["url"]] = True
-            _save(SEEN_FILE, seen)
-            _save(IMAGE_CACHE_FILE, cache)
+            save_json("data/seen_links.json", seen)
+            save_json("data/image_cache.json", cache)
             return "ok"
 
     print("[IMAGE] no-post")
     return "no-post"
 
-# ----------------
-# Welcome message
-# ----------------
 def run_welcome_message():
     msg = (
-        "👋 <b>Welcome to Red Horizon!</b>\n"
+        "👋 *Welcome to Red Horizon!*\n"
         "Your daily hub for SpaceX, Starship, Mars exploration & culture.\n\n"
-        "<b>What to expect</b>\n"
+        "What to expect:\n"
         "• 🚨 Breaking (only when it truly breaks)\n"
         "• 📰 Daily Digest (5 hand-picked stories)\n"
         "• 📸 Daily Image\n"
         "• 🎭 Culture Spotlights (books, games, movies/TV)\n\n"
         "Follow on X: @RedHorizonHub"
     )
-    _tg_send_message(msg, disable_preview=True)
+    send_telegram_message(msg, disable_preview=True)
     return "ok"
 
-# -------------------------------------------------------
-# Culture Spotlight (rotates: book → game → movie/screen)
-# -------------------------------------------------------
-def _wiki_summary_api(wiki_link: str) -> str:
-    """Use Wikipedia REST Summary API to get 1–3 sentence extract."""
+# =========================
+# Culture (Books / Games / Screen)
+# =========================
+
+DATA_DIR   = "data"
+BOOKS_FILE = os.path.join(DATA_DIR, "books.json")
+GAMES_FILE = os.path.join(DATA_DIR, "games.json")
+MOVIE_FILE = os.path.join(DATA_DIR, "movies.json")
+STATE_FILE = os.path.join(DATA_DIR, "culture_state.json")
+
+# --- Wiki summary (REST API) or first <p> fallback ---
+_P = re.compile(r"(?<=[.!?])\s+")
+_PT = re.compile(r"<p[^>]*>(.*?)</p>", re.I | re.S)
+_TAGS = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+def _wiki_summary(wiki_link: str) -> str:
     try:
         if not wiki_link:
             return ""
@@ -405,145 +355,113 @@ def _wiki_summary_api(wiki_link: str) -> str:
             return ""
         title = unquote(p.path.split("/wiki/")[-1])
         api = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
-        r = requests.get(api, headers={"Accept": "application/json"}, timeout=8)
+        r = requests.get(api, headers={"Accept":"application/json"}, timeout=8)
         if r.status_code != 200:
             return ""
-        data = r.json()
-        extract = (data.get("extract") or "").strip()
+        extract = (r.json() or {}).get("extract", "").strip()
         if not extract:
             return ""
-        parts = re.split(r"(?<=[.!?])\s+", extract)
+        parts = _P.split(extract)
         return " ".join(parts[:2]).strip()
     except Exception:
         return ""
 
-_PTAG = re.compile(r"<p[^>]*>(.*?)</p>", re.I | re.S)
-
-def _html_first_paragraph(url: str) -> str:
-    """Fallback: pull the first paragraph text from a page and return 1–2 sentences."""
+def _html_first_para(url: str) -> str:
     try:
         if not url:
             return ""
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        if resp.status_code != 200:
+        h = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=10)
+        if h.status_code != 200:
             return ""
-        m = _PTAG.search(resp.text)
+        m = _PT.search(h.text)
         if not m:
             return ""
-        text = re.sub(r"<[^>]+>", " ", m.group(1))
-        text = re.sub(r"\s+", " ", html.unescape(text)).strip()
-        parts = re.split(r"(?<=[.!?])\s+", text)
+        txt = _TAGS.sub(" ", m.group(1))
+        txt = _WS.sub(" ", html.unescape(txt)).strip()
+        parts = _P.split(txt)
         return " ".join(parts[:2]).strip()
     except Exception:
         return ""
 
-def _blurb_for_item(item, kind):
-    # 1) explicit blurb
-    if (item.get("blurb") or "").strip():
-        return item["blurb"].strip()
-    # 2) wiki summary API
-    wiki = item.get("wiki_link")
-    s = _wiki_summary_api(wiki)
-    if s:
-        return s
-    # 3) HTML first paragraph from review/wiki
-    for url in [item.get("review_link"), wiki]:
-        s = _html_first_paragraph(url or "")
+def _culture_blurb(item: dict) -> str:
+    if item.get("blurb"):
+        return item["blurb"]
+    if item.get("wiki_link"):
+        s = _wiki_summary(item["wiki_link"])
         if s:
             return s
-    # 4) safe fallback
-    title = item.get("title", "This work")
-    if kind == "book":
-        return f"{title} is a noted space-related read that resonates with Red Horizon’s audience."
-    if kind == "game":
-        return f"{title} offers an engaging space experience for explorers and sim fans."
-    return f"{title} captures the awe and peril of space in a way that sticks with you."
+    for url in (item.get("review_link"), item.get("wiki_link"), item.get("official"), item.get("trailer")):
+        s = _html_first_para(url or "")
+        if s:
+            return s
+    return "A standout space pick for the Red Horizon community."
 
-def _buttons_for_item(item, kind):
-    buttons = []
+def _mk_buttons(item: dict, kind: str):
+    btns = []
     if item.get("review_link"):
-        buttons.append({"text": "📖 Review", "url": item["review_link"]})
+        btns.append(("📖 Review", item["review_link"]))
     if item.get("wiki_link"):
-        buttons.append({"text": "🌐 Wiki", "url": item["wiki_link"]})
-    if kind in ("game", "movie") and item.get("official"):
-        buttons.append({"text": "🏷 Official", "url": item["official"]})
-    if kind in ("game", "movie") and item.get("trailer"):
-        buttons.append({"text": "🎬 Trailer", "url": item["trailer"]})
-    return [buttons] if buttons else None
+        btns.append(("🌐 Wiki", item["wiki_link"]))
+    if kind in ("game","movie") and item.get("official"):
+        btns.append(("🏷 Official", item["official"]))
+    if kind in ("game","movie") and item.get("trailer"):
+        btns.append(("🎬 Trailer", item["trailer"]))
+    return btns or None
 
-def _culture_state():
-    return _load(STATE_FILE, {
-        "cycle": "book",
-        "book_index": 0,
-        "game_index": 0,
-        "movie_index": 0,
-    })
-
-def _advance_cycle(cyc):
-    return {"book": "game", "game": "movie", "movie": "book"}[cyc]
-
-def _hashtags_for(kind):
-    base = "#RedHorizon #Space"
-    if kind == "book":
-        return f"{base} #Books #SciFi"
-    if kind == "game":
-        return f"{base} #Gaming #SpaceGames"
-    return f"{base} #Films #TV #SpaceFilms"
+def _next_cycle(cur: str) -> str:
+    return {"book": "game", "game": "movie", "movie": "book"}[cur]
 
 def run_culture_spotlight():
     """
-    Rotate Book → Game → Movie (Screen). You can force cycle by setting env CULTURE_FORCE
-    to one of: 'book' | 'game' | 'movie'.
+    Rotates book → game → movie. Persisted in data/culture_state.json.
+    Override with env CULTURE_FORCE = book|game|movie (no index advance).
     """
-    state = _culture_state()
+    state = load_json(STATE_FILE, {"cycle":"book","book_index":0,"game_index":0,"movie_index":0})
     force = (os.getenv("CULTURE_FORCE") or "").strip().lower()
     cycle = force if force in ("book","game","movie") else state["cycle"]
 
     if cycle == "book":
-        items = _load(BOOKS_FILE, [])
-        idx_key = "book_index"
-        icon = "📚"; title_line = "Book Spotlight"
+        items = load_json(BOOKS_FILE, [])
+        idx_key = "book_index"; icon = "📚"; title_line = "Book Spotlight"
         kind = "book"
     elif cycle == "game":
-        items = _load(GAMES_FILE, [])
-        idx_key = "game_index"
-        icon = "🎮"; title_line = "Game Spotlight"
+        items = load_json(GAMES_FILE, [])
+        idx_key = "game_index"; icon = "🎮"; title_line = "Game Spotlight"
         kind = "game"
     else:
-        items = _load(MOVIES_FILE, [])
-        idx_key = "movie_index"
-        icon = "🎬"; title_line = "Culture Spotlight"
+        items = load_json(MOVIE_FILE, [])
+        idx_key = "movie_index"; icon = "🎬"; title_line = "Screen Spotlight"
         kind = "movie"
 
     if not items:
-        _tg_send_message("⚠️ Culture list is empty.")
+        print("[CULTURE] list is empty for", cycle)
         return "empty"
 
     i = state[idx_key] % len(items)
     item = items[i]
 
-    title  = _safe(item.get("title"))
-    author = _safe(item.get("author") or item.get("creator") or item.get("studio") or "")
-    blurb  = _safe(_blurb_for_item(item, kind))
-    tags   = _hashtags_for(kind)
+    title  = md_escape(item.get("title",""))
+    author = item.get("author") or item.get("creator") or item.get("studio") or ""
+    author = md_escape(author)
+    blurb  = md_escape(_culture_blurb(item))
 
-    header = f"<b>{icon} {title_line}</b>\n<i>{title}</i>{(' — ' + author) if author else ''}\n\n{blurb}\n\n{tags}"
-    buttons = _buttons_for_item(item, kind)
+    header = f"*{icon} {title_line}*\n*{title}*{(' — ' + author) if author else ''}\n\n{blurb}\n\n"
+    tags = {
+        "book":  "#RedHorizon #Space #Books #SciFi",
+        "game":  "#RedHorizon #Space #Gaming #SpaceGames",
+        "movie": "#RedHorizon #Space #Films #TV",
+    }[kind]
+    caption = f"{header}{tags}"
 
-    cover = item.get("cover")
-    if cover:
-        _tg_send_photo(cover, header, buttons)
+    buttons = _mk_buttons(item, kind)
+    if item.get("cover"):
+        send_telegram_image(item["cover"], caption, buttons)
     else:
-        _tg_send_message(header, buttons)
+        send_telegram_message(caption, buttons)
 
-    # advance state unless forced
     if not force:
         state[idx_key] = (state[idx_key] + 1) % len(items)
-        state["cycle"] = _advance_cycle(cycle)
-        _save(STATE_FILE, state)
+        state["cycle"] = _next_cycle(cycle)
+        save_json(STATE_FILE, state)
 
     return "ok"
-
-# Back-compat alias for your workflow name
-def run_culture_daily():
-    return run_culture_spotlight()
