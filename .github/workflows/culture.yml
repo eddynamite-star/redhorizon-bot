@@ -1,0 +1,43 @@
+name: Red Horizon — Daily Culture Spotlight
+
+on:
+  schedule:
+    # Runs daily at 18:00 UTC — change as you like
+    - cron: "0 18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: culture-spotlight
+  cancel-in-progress: false
+
+jobs:
+  run-culture:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests feedparser
+
+      - name: Show UTC time (debug)
+        run: date -u
+
+      - name: Run culture rotation (Book → Game → Screen)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
+        run: |
+          python -c "from src.tasks import run_culture_daily; print(run_culture_daily())"
