@@ -25,7 +25,7 @@ NEWS_FEEDS = [
     "https://everydayastronaut.com/feed/",
     "https://www.universetoday.com/feed/",
     "https://phys.org/rss-feed/space-news/",
-    "https://www.planetary.org/articles/feed",         # Planetary Society
+    "https://www.planetary.org/articles/feed",
     "https://www.thespacereview.com/rss.xml",
     "https://www.orbitaltoday.com/feed/",
     "https://astronomy.com/feed",
@@ -35,7 +35,7 @@ NEWS_FEEDS = [
     "https://www.jpl.nasa.gov/multimedia/rss/news",
 ]
 
-# Image-heavy feeds (NASA IOTD, APOD mirror-like, Flickr sources)
+# Image-heavy feeds (NASA IOTD, Chandra, Mars images, SpaceX Flickr)
 IMAGE_FEEDS = [
     "https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss",
     "https://www.nasa.gov/rss/dyn/chandra_images.rss",
@@ -142,12 +142,13 @@ def _score(title: str, summary: str) -> int:
     return sc
 
 IMG_TAG = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.I)
-OG_IMAGE = re.compile(r'"og:image"\s*content=["\']([^"\']+)["\']', re.I)
+OG_IMAGE = re.compile(r'(?:property|name)=["\']og:image["\']\s*content=["\']([^"\']+)["\']', re.I)
 
 def extract_image_from_entry(entry, base_link=None):
     """
     Best-effort image discovery:
       1) media_content / media_thumbnail
+      1b) enclosures (image/*)
       2) <img src> in summary/content
       3) OpenGraph og:image (single GET, optional)
     """
@@ -163,6 +164,14 @@ def extract_image_from_entry(entry, base_link=None):
         for m in thumbs:
             u = m.get("url")
             if u: return u
+
+    # 1b) enclosures
+    encl = getattr(entry, "enclosures", None) or []
+    for enc in encl:
+        u = enc.get("href") or enc.get("url")
+        typ = (enc.get("type") or "").lower()
+        if u and ("image/" in typ or typ.endswith(("jpeg","jpg","png","webp","gif"))):
+            return u
 
     # 2) inline img tags
     for field in ("summary", "content"):
@@ -181,7 +190,7 @@ def extract_image_from_entry(entry, base_link=None):
                     pass
             return u
 
-    # 3) OG image (optional, cheap HEAD/GET)
+    # 3) OG image (optional)
     link = getattr(entry, "link", None) or base_link
     if not link:
         return None
@@ -331,3 +340,36 @@ def fetch_images():
     # newest first
     out.sort(key=lambda x: x["published"], reverse=True)
     return out
+
+# --- Nitter pulse fetcher for Trending task ---
+
+def fetch_nitter_posts(minutes=30):
+    """
+    Return recent Nitter items within 'minutes' window:
+    [{text, link, published, handle}]
+    """
+    now = _now_utc()
+    results = []
+    for feed_url in NITTER_FEEDS:
+        d = _parse_feed(feed_url)
+        if not d or not getattr(d, "entries", None):
+            continue
+        handle = feed_url.split("/")[-2]
+        for e in d.entries[:10]:
+            pub = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+            dt = _to_datetime(pub)
+            if not dt or (now - dt) > timedelta(minutes=minutes):
+                continue
+            title = getattr(e, "title", "") or ""
+            link = getattr(e, "link", "")
+            summary = getattr(e, "summary", "") or ""
+            txt = (title + " " + summary).strip()
+            results.append({
+                "text": re.sub(r"<[^>]+>", " ", txt),
+                "link": link,
+                "published": dt,
+                "handle": handle,
+            })
+    # newest first
+    results.sort(key=lambda x: x["published"], reverse=True)
+    return results
