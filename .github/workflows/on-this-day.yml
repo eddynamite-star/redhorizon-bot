@@ -1,0 +1,35 @@
+name: On This Day (Space History)
+
+on:
+  schedule:
+    # Daily at 08:00 UTC
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: on-this-day
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Post 'On This Day'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
+        run: python -c "from src.tasks import run_on_this_day; print(run_on_this_day())"
