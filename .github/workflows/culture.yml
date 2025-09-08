@@ -3,7 +3,7 @@ name: Culture Spotlight
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 18 * * *"  # 18:30 UTC daily (rotates book->game->screen)
+    - cron: "30 18 * * *"  # 18:30 UTC daily (rotates Book → Game → Screen)
 
 jobs:
   run:
@@ -24,7 +24,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
-          # Optional: CULTURE_FORCE: 'book'|'game'|'movie'
+          # Optional override: CULTURE_FORCE: book | game | movie
         run: |
           python - << 'PY'
           from src.tasks import run_culture_daily
