@@ -1,21 +1,36 @@
-name: RH Breaking (15m)
+name: Breaking (poll)
+
 on:
-  schedule: [{ cron: "*/15 * * * *" }]
   workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"  # every 15 minutes
+
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: "pip" }
-      - run: pip install -r requirements.txt
-      - name: Breaking
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
         run: |
           python - << 'PY'
           from src.tasks import run_breaking_news
           print(run_breaking_news())
           PY
+      - name: Persist seen links
+        run: |
+          git config user.name  "redhorizon-bot"
+          git config user.email "bot@example.com"
+          git add data/seen_links.json || true
+          git commit -m "chore: update seen links [skip ci]" || echo "no changes"
+          git push || true
