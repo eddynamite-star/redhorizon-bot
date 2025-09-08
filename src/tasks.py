@@ -309,7 +309,7 @@ def run_daily_image():
 def run_welcome_message():
     msg = (
         "👋 <b>Welcome to Red Horizon!</b>\n"
-        "Your daily hub for SpaceX, Starship, Mars exploration & culture.\n\n"
+        "Your daily hub for SpaceX, Starship, Mars exploration & Space culture.\n\n"
         "What to expect:\n"
         "• 🚨 Breaking (only when it truly breaks)\n"
         "• 📰 Daily Digest (5 hand-picked stories)\n"
