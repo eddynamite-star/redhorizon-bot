@@ -1,0 +1,35 @@
+name: Launch Coverage
+
+on:
+  schedule:
+    # Check every 5 minutes (UTC) for T-24h / T-1h / T-10m windows
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launch-coverage
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run Launch Coverage
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ZAPIER_HOOK_URL: ${{ secrets.ZAPIER_HOOK_URL }}
+        run: python -c "from src.tasks import run_launch_coverage; print(run_launch_coverage())"
