@@ -1,1 +1,6 @@
-{"cycle":"book","book_index":0,"game_index":0,"movie_index":0}
+{
+  "cycle": "book",
+  "book_index": 0,
+  "game_index": 0,
+  "movie_index": 0
+}
